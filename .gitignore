@@ -1,0 +1,33 @@
+# Dependencies
+node_modules/
+
+# Environment (never commit secrets)
+.env
+.env.*
+!.env.example
+
+# Build outputs
+dist/
+.next/
+out/
+build/
+*.tsbuildinfo
+
+# Prisma client (regenerate: cd backend && npx prisma generate)
+backend/generated/
+
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/
+.cursor/
+
+# Logs & caches
+*.log
+.npm/
+.turbo/
+.vercel/
+
+# Test coverage
+coverage/
+.nyc_output/
