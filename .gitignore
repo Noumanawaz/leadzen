@@ -27,6 +27,7 @@ backend/generated/
 .npm/
 .turbo/
 .vercel/
+.vercel/
 
 # Test coverage
 coverage/
