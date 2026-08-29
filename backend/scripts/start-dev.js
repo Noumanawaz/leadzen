@@ -23,18 +23,40 @@ function buildAll() {
 }
 
 let server;
-function startServer() {
-  if (server) {
-    server.kill('SIGTERM');
-  }
-  server = spawn('node', ['dist/main.js'], {
+
+function stopServer() {
+  return new Promise((resolve) => {
+    if (!server) {
+      resolve();
+      return;
+    }
+    const proc = server;
+    server = null;
+    const forceKill = setTimeout(() => {
+      if (!proc.killed) {
+        proc.kill('SIGKILL');
+      }
+    }, 1500);
+    proc.once('exit', () => {
+      clearTimeout(forceKill);
+      resolve();
+    });
+    proc.kill('SIGTERM');
+  });
+}
+
+async function startServer() {
+  await stopServer();
+  const proc = spawn('node', ['dist/main.js'], {
     cwd: root,
     stdio: 'inherit',
   });
-  server.on('exit', (code, signal) => {
+  server = proc;
+  proc.on('exit', (code, signal) => {
     if (signal !== 'SIGTERM' && signal !== 'SIGINT') {
       console.log(`Server exited (code ${code ?? 'null'}, signal ${signal ?? 'null'})`);
     }
+    if (server === proc) server = null;
   });
 }
 
@@ -43,7 +65,7 @@ run('npx', ['prisma', 'generate']);
 
 console.log('Building…');
 buildAll();
-startServer();
+void startServer();
 
 let debounce;
 let building = false;
@@ -56,7 +78,7 @@ function scheduleRebuild() {
     try {
       console.log('\nRebuilding…');
       buildAll();
-      startServer();
+      await startServer();
     } catch (err) {
       console.error('Rebuild failed:', err.message ?? err);
     } finally {
@@ -86,8 +108,7 @@ try {
 }
 
 function shutdown() {
-  if (server) server.kill('SIGTERM');
-  process.exit(0);
+  void stopServer().then(() => process.exit(0));
 }
 
 process.on('SIGINT', shutdown);
