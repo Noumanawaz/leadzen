@@ -35,6 +35,8 @@ type WhatsAppConfig = {
   embeddedSignupConfigured?: boolean;
   appId?: string;
   configId?: string;
+  missingEnvVars?: string[];
+  devManualConnectAvailable?: boolean;
 };
 
 const EMBEDDED_SIGNUP_WAIT_MS = 4000;
@@ -156,6 +158,29 @@ export function useWhatsAppEmbeddedSignup() {
     sessionRef.current = {};
 
     try {
+      const configResponse = await apiClient<
+        WhatsAppConfig & { embeddedSignupConfigured?: boolean }
+      >("/v1/integrations/whatsapp/config");
+
+      let config: WhatsAppConfig = {
+        configured:
+          configResponse.embeddedSignupConfigured ?? configResponse.configured,
+        embeddedSignupConfigured:
+          configResponse.embeddedSignupConfigured ?? configResponse.configured,
+        appId: configResponse.appId,
+        configId: configResponse.configId,
+        missingEnvVars: configResponse.missingEnvVars,
+        devManualConnectAvailable: configResponse.devManualConnectAvailable,
+      };
+
+      if (!config.embeddedSignupConfigured || !config.appId || !config.configId) {
+        const message =
+          config.missingEnvVars?.includes("META_EMBEDDED_SIGNUP_CONFIG_ID")
+            ? "WhatsApp Embedded Signup is not configured. Set META_EMBEDDED_SIGNUP_CONFIG_ID on the server (Meta → Embedded Signup configuration ID), or use dev manual connect."
+            : "WhatsApp onboarding is not configured on this server. Contact your administrator.";
+        throw new Error(message);
+      }
+
       const start = await apiClient<{
         state: string;
         configured: boolean;
@@ -164,32 +189,13 @@ export function useWhatsAppEmbeddedSignup() {
         configId?: string;
       }>("/v1/integrations/whatsapp/connect/start", { method: "POST" });
 
-      let config: WhatsAppConfig = {
-        configured: start.embeddedSignupConfigured ?? start.configured,
-        embeddedSignupConfigured:
-          start.embeddedSignupConfigured ?? start.configured,
-        appId: start.appId,
-        configId: start.configId,
+      config = {
+        ...config,
+        appId: start.appId ?? config.appId,
+        configId: start.configId ?? config.configId,
       };
 
-      if (!config.embeddedSignupConfigured || !config.appId || !config.configId) {
-        const fallback = await apiClient<
-          WhatsAppConfig & { embeddedSignupConfigured?: boolean }
-        >("/v1/integrations/whatsapp/config");
-        config = {
-          ...config,
-          ...fallback,
-          configured: fallback.embeddedSignupConfigured ?? fallback.configured,
-        };
-      }
-
-      if (!config.embeddedSignupConfigured || !config.appId || !config.configId) {
-        throw new Error(
-          "WhatsApp onboarding is not configured on this server. Contact your administrator.",
-        );
-      }
-
-      await loadFacebookSdk(config.appId);
+      await loadFacebookSdk(config.appId!);
 
       const authCodePromise = new Promise<string>((resolve, reject) => {
         window.FB?.login(

@@ -19,6 +19,7 @@ import type {
   WhatsAppAccountMetadata,
   WhatsAppEncryptedCredentials,
   WhatsAppIntegrationSummary,
+  WhatsAppPlatformSetupStatus,
   WhatsAppPublicConfig,
 } from './whatsapp.types';
 
@@ -34,19 +35,76 @@ export class WhatsAppIntegrationService {
     private readonly entitlements: EntitlementService,
   ) {}
 
+  private missingPlatformEnvVars(): string[] {
+    const missing: string[] = [];
+    if (!this.config.get('META_APP_ID', { infer: true })) {
+      missing.push('META_APP_ID');
+    }
+    if (!this.config.get('META_APP_SECRET', { infer: true })) {
+      missing.push('META_APP_SECRET');
+    }
+    if (!this.config.get('META_EMBEDDED_SIGNUP_CONFIG_ID', { infer: true })) {
+      missing.push('META_EMBEDDED_SIGNUP_CONFIG_ID');
+    }
+    if (!this.config.get('META_WEBHOOK_VERIFY_TOKEN', { infer: true })) {
+      missing.push('META_WEBHOOK_VERIFY_TOKEN');
+    }
+    if (!this.config.get('TOKEN_ENCRYPTION_KEY', { infer: true })) {
+      missing.push('TOKEN_ENCRYPTION_KEY');
+    }
+    return missing;
+  }
+
+  getPlatformSetupStatus(): WhatsAppPlatformSetupStatus {
+    const appId = this.config.get('META_APP_ID', { infer: true });
+    const messagingConfigured = this.meta.isAppConfigured();
+    const embeddedSignupConfigured = this.meta.isPlatformConfigured();
+    const tokenEncryptionConfigured = Boolean(
+      this.config.get('TOKEN_ENCRYPTION_KEY', { infer: true }),
+    );
+    const missingEnvVars = this.missingPlatformEnvVars();
+    const nodeEnv = this.config.get('NODE_ENV', { infer: true });
+    const port = this.config.get('PORT', { infer: true });
+    const graphApiVersion = this.meta.graphVersion();
+
+    return {
+      embeddedSignupConfigured,
+      messagingConfigured,
+      tokenEncryptionConfigured,
+      missingEnvVars,
+      webhookPath: '/api/webhooks/whatsapp',
+      appId: appId || undefined,
+      graphApiVersion,
+      devManualConnectAvailable:
+        nodeEnv === 'development' &&
+        messagingConfigured &&
+        tokenEncryptionConfigured &&
+        !embeddedSignupConfigured,
+      setupSteps: [
+        'Create a Meta app at developers.facebook.com and add the WhatsApp product.',
+        'Configure Facebook Login for Business → Embedded Signup and copy the Configuration ID into META_EMBEDDED_SIGNUP_CONFIG_ID.',
+        'Set META_APP_ID and META_APP_SECRET from the Meta app dashboard.',
+        'Set META_WEBHOOK_VERIFY_TOKEN and register webhook URL (see below) with messages subscribed.',
+        `Local dev: expose port ${port} via ngrok and use https://YOUR_TUNNEL${'/api/webhooks/whatsapp'}.`,
+      ],
+    };
+  }
+
   getPublicConfig(): WhatsAppPublicConfig {
     const appId = this.config.get('META_APP_ID', { infer: true });
     const configId = this.config.get('META_EMBEDDED_SIGNUP_CONFIG_ID', {
       infer: true,
     });
-    const messagingConfigured = this.meta.isAppConfigured();
-    const embeddedSignupConfigured = this.meta.isPlatformConfigured();
+    const setup = this.getPlatformSetupStatus();
     return {
-      configured: embeddedSignupConfigured,
-      messagingConfigured,
-      embeddedSignupConfigured,
+      configured: setup.embeddedSignupConfigured,
+      messagingConfigured: setup.messagingConfigured,
+      embeddedSignupConfigured: setup.embeddedSignupConfigured,
       appId: appId || undefined,
       configId: configId || undefined,
+      missingEnvVars: setup.missingEnvVars,
+      devManualConnectAvailable: setup.devManualConnectAvailable,
+      graphApiVersion: setup.graphApiVersion,
     };
   }
 

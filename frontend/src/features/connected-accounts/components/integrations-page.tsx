@@ -5,6 +5,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { apiClient } from "@/lib/api/client";
 import { useWhatsAppEmbeddedSignup } from "../hooks/use-whatsapp-embedded-signup";
+import { WhatsAppManualConnectForm } from "./whatsapp-manual-connect-form";
 
 type ConnectedAccount = {
   id: string;
@@ -52,7 +53,15 @@ export function IntegrationsPage() {
         configured: boolean;
         messagingConfigured: boolean;
         embeddedSignupConfigured: boolean;
+        missingEnvVars?: string[];
+        devManualConnectAvailable?: boolean;
       }>("/v1/integrations/whatsapp/config"),
+  });
+
+  const adminMeQuery = useQuery({
+    queryKey: ["admin-me"],
+    queryFn: () => apiClient("/admin/me"),
+    retry: false,
   });
 
   const connectMutation = useMutation({
@@ -127,6 +136,11 @@ export function IntegrationsPage() {
   const embeddedSignupReady = Boolean(
     whatsAppConfigQuery.data?.embeddedSignupConfigured,
   );
+  const devManualConnectAvailable = Boolean(
+    whatsAppConfigQuery.data?.devManualConnectAvailable,
+  );
+  const missingEnvVars = whatsAppConfigQuery.data?.missingEnvVars ?? [];
+  const isPlatformAdmin = adminMeQuery.isSuccess;
   const connectPending =
     whatsAppConnectMutation.isPending || whatsappSignup.loading;
 
@@ -247,17 +261,64 @@ export function IntegrationsPage() {
                 </p>
               ) : null}
             </div>
-            <Button onClick={handleConnectWhatsApp} disabled={connectPending}>
-              {connectPending ? "Connecting…" : "Reconnect WhatsApp"}
-            </Button>
+            {!embeddedSignupReady ? (
+              devManualConnectAvailable ? (
+                <WhatsAppManualConnectForm
+                  onSuccess={() => {
+                    setWaMessage("WhatsApp Business reconnected (dev manual).");
+                  }}
+                  onError={(message) => setWaMessage(message)}
+                />
+              ) : (
+                <p className="text-muted-foreground text-sm">
+                  Reconnect requires Meta Embedded Signup on the server.
+                </p>
+              )
+            ) : (
+              <Button onClick={handleConnectWhatsApp} disabled={connectPending}>
+                {connectPending ? "Connecting…" : "Reconnect WhatsApp"}
+              </Button>
+            )}
           </div>
         ) : (
           <div className="space-y-3">
             {!embeddedSignupReady ? (
-              <p className="text-muted-foreground text-sm">
-                WhatsApp onboarding is not configured on this server. Contact
-                your administrator to enable Meta Embedded Signup.
-              </p>
+              <>
+                <p className="text-muted-foreground text-sm">
+                  WhatsApp onboarding is not configured on this server.
+                  {isPlatformAdmin
+                    ? " Finish platform setup in Admin → Settings."
+                    : " Contact your administrator to enable Meta Embedded Signup."}
+                </p>
+                {isPlatformAdmin && missingEnvVars.length > 0 ? (
+                  <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-3 text-sm">
+                    <p className="font-medium text-amber-100">
+                      Missing server configuration
+                    </p>
+                    <ul className="mt-2 list-inside list-disc text-xs">
+                      {missingEnvVars.map((key) => (
+                        <li key={key}>
+                          <code>{key}</code>
+                        </li>
+                      ))}
+                    </ul>
+                    <p className="text-muted-foreground mt-2 text-xs">
+                      Add to <code>backend/.env</code> and restart the API. For
+                      Embedded Signup, create a configuration in Meta →
+                      Facebook Login for Business and set{" "}
+                      <code>META_EMBEDDED_SIGNUP_CONFIG_ID</code>.
+                    </p>
+                  </div>
+                ) : null}
+                {devManualConnectAvailable ? (
+                  <WhatsAppManualConnectForm
+                    onSuccess={() => {
+                      setWaMessage("WhatsApp Business connected (dev manual).");
+                    }}
+                    onError={(message) => setWaMessage(message)}
+                  />
+                ) : null}
+              </>
             ) : (
               <Button onClick={handleConnectWhatsApp} disabled={connectPending}>
                 {connectPending ? "Connecting…" : "Connect WhatsApp"}

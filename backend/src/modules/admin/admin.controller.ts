@@ -23,6 +23,7 @@ import { PlatformAdminGuard } from '../../common/guards/platform-admin.guard';
 import type { AuthUserPayload } from '../../common/types/request-context';
 import { AdminService } from './admin.service';
 import { PlatformAdminService } from './platform-admin.service';
+import { WhatsAppIntegrationService } from '../whatsapp/whatsapp-integration.service';
 
 class UpdateOrgStatusDto {
   @IsEnum(OrganizationStatus)
@@ -48,6 +49,7 @@ export class AdminController {
   constructor(
     private readonly admin: AdminService,
     private readonly platformAdmins: PlatformAdminService,
+    private readonly whatsappIntegration: WhatsAppIntegrationService,
   ) {}
 
   @Get('me')
@@ -182,6 +184,13 @@ export class AdminController {
     return {
       allowlistCount: this.platformAdmins.parseAllowlist().length,
       note: 'Platform admins are seeded only via ADMIN_EMAIL_ALLOWLIST. There is no self-promote UI.',
+    };
+  }
+
+  @Get('settings/integrations')
+  integrationSettings() {
+    return {
+      whatsapp: this.whatsappIntegration.getPlatformSetupStatus(),
     };
   }
 }

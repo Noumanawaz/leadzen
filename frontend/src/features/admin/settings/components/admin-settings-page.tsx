@@ -2,6 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { apiClient } from "@/lib/api/client";
+import { WhatsAppPlatformSetup } from "./whatsapp-platform-setup";
 
 export function AdminSettingsPage() {
   const me = useQuery({
@@ -58,6 +59,8 @@ export function AdminSettingsPage() {
         </div>
         <p className="text-muted-foreground text-xs">{settings.data?.note}</p>
       </section>
+
+      <WhatsAppPlatformSetup />
 
       <section className="space-y-2">
         <h2 className="text-sm font-medium">Recent audit log</h2>

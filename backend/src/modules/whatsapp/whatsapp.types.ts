@@ -42,4 +42,19 @@ export type WhatsAppPublicConfig = {
   embeddedSignupConfigured: boolean;
   appId?: string;
   configId?: string;
+  missingEnvVars?: string[];
+  devManualConnectAvailable?: boolean;
+  graphApiVersion?: string;
+};
+
+export type WhatsAppPlatformSetupStatus = {
+  embeddedSignupConfigured: boolean;
+  messagingConfigured: boolean;
+  tokenEncryptionConfigured: boolean;
+  missingEnvVars: string[];
+  webhookPath: string;
+  setupSteps: string[];
+  appId?: string;
+  graphApiVersion: string;
+  devManualConnectAvailable: boolean;
 };
