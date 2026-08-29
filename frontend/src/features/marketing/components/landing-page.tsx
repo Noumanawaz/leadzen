@@ -93,6 +93,9 @@ export function LandingPage() {
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 text-sm text-white/35 sm:px-6">
           <span className="font-heading font-medium text-white/50">Lead SaaS</span>
           <div className="flex gap-4">
+            <Link href="/privacy" className="hover:text-white/70">
+              Privacy
+            </Link>
             <Link href="/login" className="hover:text-white/70">
               Sign in
             </Link>
