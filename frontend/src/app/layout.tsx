@@ -20,7 +20,10 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Lead SaaS",
+  title: {
+    default: "LeadZen",
+    template: "%s | LeadZen",
+  },
   description:
     "Find, enrich, qualify, and reach the right prospects from one intelligent sales platform.",
 };
