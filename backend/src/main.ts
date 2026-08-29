@@ -4,6 +4,10 @@ import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import type { AppEnv } from './config/env.validation';
+import {
+  buildAllowedCorsOrigins,
+  isAllowedCorsOrigin,
+} from './config/cors';
 
 async function bootstrap() {
   // Prisma BigInt (e.g. plan.maxStorageBytes) must be JSON-safe
@@ -15,8 +19,18 @@ async function bootstrap() {
   const config = app.get(ConfigService<AppEnv, true>);
 
   app.setGlobalPrefix('api');
+  const allowedCorsOrigins = buildAllowedCorsOrigins(
+    config.get('FRONTEND_URL', { infer: true }),
+    config.get('CORS_EXTRA_ORIGINS', { infer: true }),
+  );
   app.enableCors({
-    origin: config.get('FRONTEND_URL', { infer: true }),
+    origin: (origin, callback) => {
+      if (isAllowedCorsOrigin(origin, allowedCorsOrigins)) {
+        callback(null, true);
+        return;
+      }
+      callback(new Error(`Origin not allowed by CORS: ${origin ?? 'unknown'}`));
+    },
     credentials: true,
   });
   app.useGlobalPipes(

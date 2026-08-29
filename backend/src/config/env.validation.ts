@@ -6,6 +6,7 @@ const envSchema = z.object({
     .default('development'),
   PORT: z.coerce.number().int().positive().default(4000),
   FRONTEND_URL: z.string().url().default('http://localhost:3000'),
+  CORS_EXTRA_ORIGINS: z.string().optional().default(''),
   DATABASE_URL: z.string().min(1, 'DATABASE_URL is required (Neon pooled URL)'),
   DIRECT_URL: z.string().optional(),
   JWT_ACCESS_SECRET: z.string().min(32).default('dev-access-secret-change-me-32chars'),
