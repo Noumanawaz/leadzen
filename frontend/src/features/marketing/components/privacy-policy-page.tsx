@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { LegalFooter } from "./legal-footer";
 import { MarketingNav } from "./marketing-nav";
 
 const lastUpdated = "August 29, 2026";
@@ -269,10 +269,10 @@ export function PrivacyPolicyPage() {
               For privacy questions, data requests, or concerns about this
               policy, contact us at{" "}
               <a
-                href="mailto:privacy@leadsaas.app"
+                href="mailto:noumannawaz2004@gmail.com"
                 className="text-emerald-400 underline-offset-2 hover:underline"
               >
-                privacy@leadsaas.app
+                noumannawaz2004@gmail.com
               </a>{" "}
               or through your Lead SaaS organization administrator.
             </p>
@@ -280,24 +280,7 @@ export function PrivacyPolicyPage() {
         </div>
       </main>
 
-      <footer className="border-t border-white/5 py-8">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 text-sm text-white/35 sm:px-6">
-          <Link
-            href="/"
-            className="font-heading font-medium text-white/50 hover:text-white/70"
-          >
-            Lead SaaS
-          </Link>
-          <div className="flex gap-4">
-            <Link href="/privacy" className="text-white/50 hover:text-white/70">
-              Privacy
-            </Link>
-            <Link href="/login" className="hover:text-white/70">
-              Sign in
-            </Link>
-          </div>
-        </div>
-      </footer>
+      <LegalFooter />
     </div>
   );
 }
