@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AdminModule } from '../admin/admin.module';
 import { CreditsModule } from '../credits/credits.module';
 import { EntitlementsModule } from '../entitlements/entitlements.module';
 import { GmailOAuthService } from '../email/gmail-oauth.service';
@@ -10,7 +11,7 @@ import { OutreachRouter } from './outreach.router';
 import { PlaceholderPhoneProvider, PlaceholderSmsProvider } from './placeholder.providers';
 
 @Module({
-  imports: [CreditsModule, UsageModule, EntitlementsModule, WhatsAppModule],
+  imports: [AdminModule, CreditsModule, UsageModule, EntitlementsModule, WhatsAppModule],
   controllers: [IntegrationsController],
   providers: [
     GmailOAuthService,

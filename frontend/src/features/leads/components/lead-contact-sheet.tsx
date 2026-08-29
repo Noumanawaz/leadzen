@@ -161,7 +161,12 @@ export function LeadContactSheet({
     enabled: open,
   });
 
-  const whatsappConnected = Boolean(whatsappStatusQuery.data?.connected);
+  const whatsappStatus = whatsappStatusQuery.data?.status ?? "disconnected";
+  const whatsappConnected =
+    Boolean(whatsappStatusQuery.data?.connected) &&
+    whatsappStatus === "connected";
+  const whatsappNeedsAttention =
+    whatsappStatus === "error" || whatsappStatus === "requires_reconnect";
 
   const gmailAccount = useMemo(
     () =>
@@ -454,7 +459,16 @@ export function LeadContactSheet({
             </TabsContent>
 
             <TabsContent value="whatsapp" className="mt-6 space-y-4">
-              {!whatsappConnected ? (
+              {whatsappNeedsAttention ? (
+                <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
+                  WhatsApp connection requires attention.{" "}
+                  <Link href="/settings/integrations" className="underline">
+                    Reconnect WhatsApp
+                  </Link>{" "}
+                  in Integrations before messaging this lead.
+                </p>
+              ) : null}
+              {!whatsappConnected && !whatsappNeedsAttention ? (
                 <p className="text-muted-foreground text-sm">
                   WhatsApp is not connected.{" "}
                   <Link href="/settings/integrations" className="underline">
@@ -462,7 +476,8 @@ export function LeadContactSheet({
                   </Link>{" "}
                   in Integrations before messaging this lead.
                 </p>
-              ) : (
+              ) : null}
+              {whatsappConnected ? (
                 <p className="text-muted-foreground text-xs">
                   To {phoneE164}
                   {whatsappStatusQuery.data?.displayName
@@ -471,7 +486,7 @@ export function LeadContactSheet({
                   . Uses your workspace WhatsApp Business account (1 credit per
                   message).
                 </p>
-              )}
+              ) : null}
               <div className="space-y-2">
                 <Label htmlFor="wa-body">Message</Label>
                 <Textarea

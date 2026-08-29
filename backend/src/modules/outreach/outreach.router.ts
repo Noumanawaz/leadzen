@@ -265,6 +265,12 @@ export class OutreachRouter {
         );
 
     if (result.status === 'failed' || !result.providerMessageId) {
+      if (result.authError) {
+        await this.whatsappIntegration.handleSendAuthFailure(
+          params.organizationId,
+          accountId,
+        );
+      }
       await this.prisma.message.update({
         where: { id: message.id },
         data: {

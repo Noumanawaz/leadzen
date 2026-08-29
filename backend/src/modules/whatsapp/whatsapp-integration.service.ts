@@ -14,7 +14,7 @@ import { decryptSecret, encryptSecret } from '../../common/encryption/token-encr
 import type { AppEnv } from '../../config/env.validation';
 import { PrismaService } from '../../database/prisma.service';
 import { EntitlementService } from '../entitlements/entitlement.service';
-import { MetaWhatsAppProvider } from './meta-whatsapp.provider';
+import { mapMetaError, MetaWhatsAppProvider } from './meta-whatsapp.provider';
 import type {
   WhatsAppAccountMetadata,
   WhatsAppEncryptedCredentials,
@@ -106,29 +106,49 @@ export class WhatsAppIntegrationService {
     );
     const credentials: WhatsAppEncryptedCredentials = {
       accessToken,
-      phoneNumberId: params.phoneNumberId,
+      phoneNumberId: params.phoneNumberId.trim(),
       tokenExpiresAt: expiresIn
         ? new Date(Date.now() + expiresIn * 1000).toISOString()
         : undefined,
     };
 
+    const verifiedWabaId = await this.meta.resolveWabaForPhoneNumber(
+      credentials,
+      credentials.phoneNumberId,
+      params.wabaId?.trim(),
+    );
+    const wabaProfile = await this.meta.fetchWabaProfile(
+      credentials,
+      verifiedWabaId,
+    );
     const profile = await this.meta.fetchPhoneNumberProfile(credentials);
+    const now = new Date().toISOString();
+
     const metadata: WhatsAppAccountMetadata = {
-      wabaId: params.wabaId,
-      businessId: params.businessId,
+      wabaId: verifiedWabaId,
+      businessId: params.businessId?.trim(),
       phoneNumber: profile.displayPhoneNumber,
-      displayName: profile.verifiedName,
+      displayName: wabaProfile.name || profile.verifiedName,
       graphApiVersion: this.meta.graphVersion(),
-      connectedAt: new Date().toISOString(),
+      connectedAt: now,
+      connectionMethod: 'embedded_signup',
+      lastVerifiedAt: now,
+      tokenExpiresAt: credentials.tokenExpiresAt,
     };
 
-    return this.saveConnectedAccount({
+    const account = await this.saveConnectedAccount({
       organizationId: params.organizationId,
-      phoneNumberId: params.phoneNumberId,
+      phoneNumberId: credentials.phoneNumberId,
       credentials,
       metadata,
-      label: profile.verifiedName || profile.displayPhoneNumber,
+      label: metadata.displayName || profile.displayPhoneNumber,
     });
+
+    void this.meta
+      .subscribeWabaToApp(credentials, verifiedWabaId)
+      .catch(() => undefined);
+
+    return account;
   }
 
   async manualConnect(
@@ -146,13 +166,25 @@ export class WhatsAppIntegrationService {
       phoneNumberId: params.phoneNumberId.trim(),
     };
 
+    let verifiedWabaId = params.wabaId?.trim();
+    if (verifiedWabaId) {
+      await this.meta.verifyPhoneBelongsToWaba(
+        credentials,
+        verifiedWabaId,
+        credentials.phoneNumberId,
+      );
+    }
+
     const profile = await this.meta.fetchPhoneNumberProfile(credentials);
+    const now = new Date().toISOString();
     const metadata: WhatsAppAccountMetadata = {
-      wabaId: params.wabaId?.trim() || undefined,
+      wabaId: verifiedWabaId,
       phoneNumber: profile.displayPhoneNumber,
       displayName: profile.verifiedName,
       graphApiVersion: this.meta.graphVersion(),
-      connectedAt: new Date().toISOString(),
+      connectedAt: now,
+      connectionMethod: 'manual_legacy',
+      lastVerifiedAt: now,
     };
 
     return this.saveConnectedAccount({
@@ -231,23 +263,56 @@ export class WhatsAppIntegrationService {
   async disconnect(organizationId: string) {
     const account = await this.getActiveAccountRecord(organizationId);
     if (!account) {
+      const errored = await this.prisma.connectedAccount.findFirst({
+        where: {
+          organizationId,
+          provider: ConnectedAccountProvider.meta_whatsapp,
+          status: ConnectedAccountStatus.error,
+        },
+      });
+      if (errored) {
+        await this.clearAccountCredentials(errored.id, errored.metadata);
+        return { disconnected: true };
+      }
       throw new NotFoundException('WhatsApp is not connected');
     }
-    await this.prisma.connectedAccount.update({
-      where: { id: account.id },
-      data: {
-        status: ConnectedAccountStatus.disconnected,
-        encryptedCredentials: null,
-      },
-    });
+
+    const metadata = (account.metadata as WhatsAppAccountMetadata | null) ?? {};
+    if (metadata.wabaId && account.encryptedCredentials) {
+      const credentials = this.decryptCredentials(account.encryptedCredentials);
+      if (credentials) {
+        void this.meta
+          .unsubscribeWabaFromApp(credentials, metadata.wabaId)
+          .catch(() => undefined);
+      }
+    }
+
+    await this.clearAccountCredentials(account.id, account.metadata);
     this.logger.log(
       `whatsapp.integration.disconnected tenantId=${organizationId} integrationId=${account.id}`,
     );
     return { disconnected: true };
   }
 
+  private async clearAccountCredentials(
+    accountId: string,
+    metadata: unknown,
+  ) {
+    await this.prisma.connectedAccount.update({
+      where: { id: accountId },
+      data: {
+        status: ConnectedAccountStatus.disconnected,
+        encryptedCredentials: null,
+        metadata: {
+          ...((metadata as WhatsAppAccountMetadata | null) ?? {}),
+          disconnectedAt: new Date().toISOString(),
+        },
+      },
+    });
+  }
+
   async getIntegration(organizationId: string): Promise<WhatsAppIntegrationSummary> {
-    const account = await this.getActiveAccountRecord(organizationId);
+    const account = await this.findWhatsAppAccount(organizationId);
     if (!account) {
       return { connected: false, status: 'disconnected' };
     }
@@ -264,6 +329,8 @@ export class WhatsAppIntegrationService {
       status: summary.status,
       phoneNumber: summary.phoneNumber,
       displayName: summary.displayName,
+      lastVerifiedAt: summary.lastVerifiedAt,
+      connectionMethod: summary.connectionMethod,
       connectedAccount: summary.connected
         ? {
             id: summary.connectedAccountId!,
@@ -275,16 +342,34 @@ export class WhatsAppIntegrationService {
 
   async testConnection(organizationId: string) {
     const integration = await this.getIntegration(organizationId);
-    if (!integration.connected) {
+    if (!integration.connected && integration.status !== 'error') {
       throw new BadRequestException('WhatsApp is not connected');
     }
-    const { credentials } = await this.resolveCredentials(organizationId);
-    const profile = await this.meta.fetchPhoneNumberProfile(credentials);
-    return {
-      ok: true,
-      phoneNumber: profile.displayPhoneNumber || integration.phoneNumber,
-      displayName: profile.verifiedName || integration.displayName,
-    };
+
+    const account = await this.findWhatsAppAccount(organizationId);
+    if (!account?.encryptedCredentials) {
+      throw new BadRequestException('WhatsApp is not connected');
+    }
+
+    try {
+      const credentials = this.decryptCredentials(account.encryptedCredentials);
+      if (!credentials) {
+        throw new BadRequestException(
+          'WhatsApp credentials could not be read. Please reconnect.',
+        );
+      }
+      const profile = await this.meta.fetchPhoneNumberProfile(credentials);
+      await this.markConnectionHealthy(account.id, account.metadata, profile);
+      return {
+        ok: true,
+        phoneNumber: profile.displayPhoneNumber || integration.phoneNumber,
+        displayName: profile.verifiedName || integration.displayName,
+        lastVerifiedAt: new Date().toISOString(),
+      };
+    } catch (err) {
+      await this.markConnectionError(organizationId, account.id, account.metadata);
+      throw err;
+    }
   }
 
   async getActiveAccountRecord(organizationId: string) {
@@ -297,6 +382,19 @@ export class WhatsAppIntegrationService {
     });
   }
 
+  private async findWhatsAppAccount(organizationId: string) {
+    return this.prisma.connectedAccount.findFirst({
+      where: {
+        organizationId,
+        provider: ConnectedAccountProvider.meta_whatsapp,
+        status: {
+          in: [ConnectedAccountStatus.active, ConnectedAccountStatus.error],
+        },
+      },
+      orderBy: { updatedAt: 'desc' },
+    });
+  }
+
   async resolveCredentials(
     organizationId: string,
   ): Promise<{
@@ -306,6 +404,18 @@ export class WhatsAppIntegrationService {
   }> {
     const account = await this.getActiveAccountRecord(organizationId);
     if (!account?.encryptedCredentials) {
+      const errored = await this.prisma.connectedAccount.findFirst({
+        where: {
+          organizationId,
+          provider: ConnectedAccountProvider.meta_whatsapp,
+          status: ConnectedAccountStatus.error,
+        },
+      });
+      if (errored) {
+        throw new BadRequestException(
+          'WhatsApp connection requires attention. Reconnect in Integrations.',
+        );
+      }
       throw new BadRequestException(
         'WhatsApp is not connected. Connect your WhatsApp Business account in Integrations.',
       );
@@ -316,11 +426,68 @@ export class WhatsAppIntegrationService {
         'WhatsApp credentials could not be read. Please reconnect.',
       );
     }
+    if (
+      credentials.tokenExpiresAt &&
+      new Date(credentials.tokenExpiresAt).getTime() < Date.now()
+    ) {
+      await this.markConnectionError(organizationId, account.id, account.metadata);
+      throw new BadRequestException(
+        'WhatsApp connection expired. Please reconnect your WhatsApp Business account.',
+      );
+    }
     return {
       accountId: account.id,
       credentials,
       metadata: (account.metadata as WhatsAppAccountMetadata | null) ?? {},
     };
+  }
+
+  async markConnectionError(
+    organizationId: string,
+    accountId: string,
+    metadata: unknown,
+  ) {
+    await this.prisma.connectedAccount.update({
+      where: { id: accountId },
+      data: {
+        status: ConnectedAccountStatus.error,
+        metadata: {
+          ...((metadata as WhatsAppAccountMetadata | null) ?? {}),
+          lastErrorAt: new Date().toISOString(),
+        },
+      },
+    });
+    this.logger.warn(
+      `whatsapp.integration.error tenantId=${organizationId} integrationId=${accountId}`,
+    );
+  }
+
+  private async markConnectionHealthy(
+    accountId: string,
+    metadata: unknown,
+    profile: { displayPhoneNumber: string; verifiedName: string },
+  ) {
+    const now = new Date().toISOString();
+    await this.prisma.connectedAccount.update({
+      where: { id: accountId },
+      data: {
+        status: ConnectedAccountStatus.active,
+        metadata: {
+          ...((metadata as WhatsAppAccountMetadata | null) ?? {}),
+          phoneNumber: profile.displayPhoneNumber,
+          displayName: profile.verifiedName,
+          lastVerifiedAt: now,
+        },
+      },
+    });
+  }
+
+  async handleSendAuthFailure(organizationId: string, accountId: string) {
+    const account = await this.prisma.connectedAccount.findFirst({
+      where: { id: accountId, organizationId },
+    });
+    if (!account) return;
+    await this.markConnectionError(organizationId, accountId, account.metadata);
   }
 
   async findAccountByPhoneNumberId(phoneNumberId: string) {
@@ -362,17 +529,30 @@ export class WhatsAppIntegrationService {
     externalAccountId: string | null;
   }): WhatsAppIntegrationSummary {
     const metadata = (account.metadata as WhatsAppAccountMetadata | null) ?? {};
+    const status = this.mapAccountStatus(account.status);
     return {
-      connected: account.status === ConnectedAccountStatus.active,
-      status:
-        account.status === ConnectedAccountStatus.active
-          ? 'connected'
-          : (account.status as WhatsAppIntegrationSummary['status']),
+      connected: status === 'connected',
+      status,
       phoneNumber: metadata.phoneNumber,
       displayName: metadata.displayName,
       phoneNumberId: account.externalAccountId ?? undefined,
       wabaId: metadata.wabaId,
       connectedAccountId: account.id,
+      lastVerifiedAt: metadata.lastVerifiedAt,
+      connectionMethod: metadata.connectionMethod,
     };
+  }
+
+  private mapAccountStatus(
+    status: ConnectedAccountStatus,
+  ): WhatsAppIntegrationSummary['status'] {
+    if (status === ConnectedAccountStatus.active) return 'connected';
+    if (status === ConnectedAccountStatus.error) return 'requires_reconnect';
+    if (status === ConnectedAccountStatus.pending) return 'pending';
+    return 'disconnected';
+  }
+
+  mapMetaErrorMessage(error?: { message?: string; code?: number }) {
+    return mapMetaError(error);
   }
 }

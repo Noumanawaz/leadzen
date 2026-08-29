@@ -37,6 +37,8 @@ type WhatsAppConfig = {
   configId?: string;
 };
 
+const EMBEDDED_SIGNUP_WAIT_MS = 4000;
+
 function loadFacebookSdk(appId: string, version = "v22.0"): Promise<void> {
   return new Promise((resolve, reject) => {
     if (window.FB) {
@@ -69,6 +71,45 @@ function loadFacebookSdk(appId: string, version = "v22.0"): Promise<void> {
     script.onerror = () => reject(new Error("Failed to load Meta SDK"));
     document.body.appendChild(script);
   });
+}
+
+function waitForEmbeddedSignupSession(
+  getSession: () => EmbeddedSignupSession,
+  timeoutMs: number,
+): Promise<EmbeddedSignupSession> {
+  return new Promise((resolve, reject) => {
+    const started = Date.now();
+    const interval = window.setInterval(() => {
+      const session = getSession();
+      if (session.phoneNumberId) {
+        window.clearInterval(interval);
+        resolve(session);
+        return;
+      }
+      if (Date.now() - started >= timeoutMs) {
+        window.clearInterval(interval);
+        reject(
+          new Error(
+            "Meta did not return a phone number. Finish Embedded Signup and try again.",
+          ),
+        );
+      }
+    }, 100);
+  });
+}
+
+function mapConnectError(err: unknown): string {
+  const message = err instanceof Error ? err.message : "WhatsApp connection failed";
+  if (message.includes("Organization mismatch")) {
+    return "Connection session expired. Please try again.";
+  }
+  if (message.includes("already connected to another workspace")) {
+    return "This WhatsApp number is already linked to another workspace.";
+  }
+  if (message.includes("not configured")) {
+    return "WhatsApp onboarding is not configured. Contact your administrator.";
+  }
+  return message;
 }
 
 export function useWhatsAppEmbeddedSignup() {
@@ -132,9 +173,9 @@ export function useWhatsAppEmbeddedSignup() {
       };
 
       if (!config.embeddedSignupConfigured || !config.appId || !config.configId) {
-        const fallback = await apiClient<WhatsAppConfig & { embeddedSignupConfigured?: boolean }>(
-          "/v1/integrations/whatsapp/config",
-        );
+        const fallback = await apiClient<
+          WhatsAppConfig & { embeddedSignupConfigured?: boolean }
+        >("/v1/integrations/whatsapp/config");
         config = {
           ...config,
           ...fallback,
@@ -144,13 +185,13 @@ export function useWhatsAppEmbeddedSignup() {
 
       if (!config.embeddedSignupConfigured || !config.appId || !config.configId) {
         throw new Error(
-          "WhatsApp is not configured on this server. Add META_APP_ID and META_EMBEDDED_SIGNUP_CONFIG_ID to backend .env.",
+          "WhatsApp onboarding is not configured on this server. Contact your administrator.",
         );
       }
 
       await loadFacebookSdk(config.appId);
 
-      const authCode = await new Promise<string>((resolve, reject) => {
+      const authCodePromise = new Promise<string>((resolve, reject) => {
         window.FB?.login(
           (response) => {
             if (response.authResponse?.code) {
@@ -168,12 +209,13 @@ export function useWhatsAppEmbeddedSignup() {
         );
       });
 
-      const session = sessionRef.current;
-      if (!session.phoneNumberId) {
-        throw new Error(
-          "Meta did not return a phone number. Finish Embedded Signup and try again.",
-        );
-      }
+      const [authCode, session] = await Promise.all([
+        authCodePromise,
+        waitForEmbeddedSignupSession(
+          () => sessionRef.current,
+          EMBEDDED_SIGNUP_WAIT_MS,
+        ),
+      ]);
 
       await apiClient("/v1/integrations/whatsapp/connect/complete", {
         method: "POST",
@@ -186,10 +228,9 @@ export function useWhatsAppEmbeddedSignup() {
         }),
       });
     } catch (err) {
-      const message =
-        err instanceof Error ? err.message : "WhatsApp connection failed";
+      const message = mapConnectError(err);
       setError(message);
-      throw err;
+      throw new Error(message);
     } finally {
       setLoading(false);
     }

@@ -1,3 +1,5 @@
+export type WhatsAppConnectionMethod = 'embedded_signup' | 'manual_legacy';
+
 export type WhatsAppAccountMetadata = {
   wabaId?: string;
   businessId?: string;
@@ -5,6 +7,9 @@ export type WhatsAppAccountMetadata = {
   displayName?: string;
   graphApiVersion?: string;
   connectedAt?: string;
+  connectionMethod?: WhatsAppConnectionMethod;
+  lastVerifiedAt?: string;
+  tokenExpiresAt?: string;
 };
 
 export type WhatsAppEncryptedCredentials = {
@@ -15,12 +20,19 @@ export type WhatsAppEncryptedCredentials = {
 
 export type WhatsAppIntegrationSummary = {
   connected: boolean;
-  status: 'connected' | 'disconnected' | 'error' | 'pending';
+  status:
+    | 'connected'
+    | 'disconnected'
+    | 'error'
+    | 'pending'
+    | 'requires_reconnect';
   phoneNumber?: string;
   displayName?: string;
   phoneNumberId?: string;
   wabaId?: string;
   connectedAccountId?: string;
+  lastVerifiedAt?: string;
+  connectionMethod?: WhatsAppConnectionMethod;
 };
 
 export type WhatsAppPublicConfig = {

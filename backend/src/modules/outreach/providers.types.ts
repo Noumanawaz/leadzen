@@ -39,6 +39,7 @@ export type SendWhatsAppResult = {
   providerMessageId: string;
   status: 'queued' | 'sent' | 'failed';
   error?: string;
+  authError?: boolean;
 };
 
 export interface WhatsAppProvider {

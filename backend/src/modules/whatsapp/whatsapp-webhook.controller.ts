@@ -16,6 +16,11 @@ import type { AppEnv } from '../../config/env.validation';
 import { verifyMetaWebhookSignature } from './whatsapp-webhook.signature';
 import { WhatsAppQueueService } from './whatsapp-queue.service';
 import { WhatsAppWebhookService } from './whatsapp-webhook.service';
+import { resolveWebhookEventId } from './whatsapp-webhook.utils';
+
+type WebhookPayload = {
+  entry?: Array<{ id?: string; changes?: unknown[] }>;
+};
 
 @Controller('webhooks/whatsapp')
 export class WhatsAppWebhookController {
@@ -55,12 +60,11 @@ export class WhatsAppWebhookController {
       throw new ForbiddenException('Invalid webhook signature');
     }
 
-    const payload = JSON.parse(req.rawBody.toString('utf8')) as {
-      entry?: Array<{ id?: string }>;
-    };
-    const externalEventId =
-      payload.entry?.[0]?.id ??
-      `wa_evt_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    const payload = JSON.parse(req.rawBody.toString('utf8')) as WebhookPayload;
+    const externalEventId = resolveWebhookEventId(
+      payload as Parameters<typeof resolveWebhookEventId>[0],
+      req.rawBody,
+    );
 
     const isNew = await this.webhook.recordWebhookEvent({
       externalEventId,
@@ -72,7 +76,9 @@ export class WhatsAppWebhookController {
     }
 
     this.logger.log('whatsapp.webhook.received');
-    void this.queue.enqueue(externalEventId, payload).catch(() => undefined);
+    void this.queue
+      .enqueue(externalEventId, payload)
+      .catch(() => undefined);
     return { success: true };
   }
 }

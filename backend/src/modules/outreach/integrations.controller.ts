@@ -3,6 +3,7 @@ import {
   Body,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   Param,
   Post,
@@ -14,6 +15,7 @@ import { ApiBearerAuth, ApiHeader, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { ConfigService } from '@nestjs/config';
 import { IsOptional, IsString, MinLength } from 'class-validator';
+import { PlatformAdminStatus } from '../../../generated/prisma/client';
 import {
   CurrentUser,
   OrgId,
@@ -24,6 +26,7 @@ import { OrgMembershipGuard } from '../../common/guards/org-membership.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import type { AuthUserPayload } from '../../common/types/request-context';
 import type { AppEnv } from '../../config/env.validation';
+import { PlatformAdminService } from '../admin/platform-admin.service';
 import { GmailOAuthService } from '../email/gmail-oauth.service';
 import { OutreachRouter } from './outreach.router';
 import { SuppressionsService } from '../suppressions/suppressions.service';
@@ -81,6 +84,7 @@ export class IntegrationsController {
     private readonly config: ConfigService<AppEnv, true>,
     private readonly whatsappIntegration: WhatsAppIntegrationService,
     private readonly whatsappTemplates: WhatsAppTemplateService,
+    private readonly platformAdmins: PlatformAdminService,
   ) {}
 
   @ApiBearerAuth()
@@ -280,6 +284,15 @@ export class IntegrationsController {
   @ApiHeader({ name: 'x-organization-id', required: true })
   @UseGuards(AuthGuard, OrgMembershipGuard, PermissionsGuard)
   @RequirePermissions('integrations:connect')
+  @Get('whatsapp/connection')
+  whatsAppConnection(@OrgId() organizationId: string) {
+    return this.outreach.getWhatsAppIntegration(organizationId);
+  }
+
+  @ApiBearerAuth()
+  @ApiHeader({ name: 'x-organization-id', required: true })
+  @UseGuards(AuthGuard, OrgMembershipGuard, PermissionsGuard)
+  @RequirePermissions('integrations:connect')
   @Get('whatsapp/config')
   whatsAppConfig() {
     return this.whatsappIntegration.getPublicConfig();
@@ -317,10 +330,23 @@ export class IntegrationsController {
   @UseGuards(AuthGuard, OrgMembershipGuard, PermissionsGuard)
   @RequirePermissions('integrations:connect')
   @Post('whatsapp/connect/manual')
-  whatsAppManualConnect(
+  async whatsAppManualConnect(
     @OrgId() organizationId: string,
+    @CurrentUser() user: AuthUserPayload,
     @Body() dto: WhatsAppManualConnectDto,
   ) {
+    const nodeEnv = this.config.get('NODE_ENV', { infer: true });
+    if (nodeEnv !== 'development') {
+      const admin = await this.platformAdmins.resolveForUser({
+        userId: user.id,
+        email: user.email,
+      });
+      if (!admin || admin.status !== PlatformAdminStatus.active) {
+        throw new ForbiddenException(
+          'Manual WhatsApp connect is disabled. Use Connect WhatsApp in Integrations.',
+        );
+      }
+    }
     return this.whatsappIntegration.manualConnect(organizationId, dto);
   }
 
@@ -339,6 +365,15 @@ export class IntegrationsController {
   @RequirePermissions('integrations:connect')
   @Post('whatsapp/test')
   whatsAppTest(@OrgId() organizationId: string) {
+    return this.whatsappIntegration.testConnection(organizationId);
+  }
+
+  @ApiBearerAuth()
+  @ApiHeader({ name: 'x-organization-id', required: true })
+  @UseGuards(AuthGuard, OrgMembershipGuard, PermissionsGuard)
+  @RequirePermissions('integrations:connect')
+  @Post('whatsapp/test-connection')
+  whatsAppTestConnection(@OrgId() organizationId: string) {
     return this.whatsappIntegration.testConnection(organizationId);
   }
 

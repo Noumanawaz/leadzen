@@ -3,8 +3,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { apiClient } from "@/lib/api/client";
 import { useWhatsAppEmbeddedSignup } from "../hooks/use-whatsapp-embedded-signup";
 
@@ -21,6 +19,7 @@ type WhatsAppIntegration = {
   status: string;
   phoneNumber?: string;
   displayName?: string;
+  lastVerifiedAt?: string;
 };
 
 export function IntegrationsPage() {
@@ -28,9 +27,6 @@ export function IntegrationsPage() {
   const search =
     typeof window !== "undefined" ? window.location.search : "";
   const [waMessage, setWaMessage] = useState<string | null>(null);
-  const [waPhoneNumberId, setWaPhoneNumberId] = useState("");
-  const [waWabaId, setWaWabaId] = useState("");
-  const [waAccessToken, setWaAccessToken] = useState("");
   const whatsappSignup = useWhatsAppEmbeddedSignup();
 
   const statusQuery = useQuery({
@@ -101,6 +97,8 @@ export function IntegrationsPage() {
           ? `Connection OK for ${data.phoneNumber}.`
           : "Connection OK.",
       );
+      void queryClient.invalidateQueries({ queryKey: ["whatsapp-integration"] });
+      void queryClient.invalidateQueries({ queryKey: ["whatsapp-status"] });
     },
     onError: (err: Error) => setWaMessage(err.message),
   });
@@ -116,35 +114,26 @@ export function IntegrationsPage() {
     onError: (err: Error) => setWaMessage(err.message),
   });
 
-  const whatsAppManualConnectMutation = useMutation({
-    mutationFn: () =>
-      apiClient("/v1/integrations/whatsapp/connect/manual", {
-        method: "POST",
-        body: JSON.stringify({
-          phoneNumberId: waPhoneNumberId.trim(),
-          wabaId: waWabaId.trim() || undefined,
-          accessToken: waAccessToken.trim(),
-        }),
-      }),
-    onSuccess: () => {
-      setWaMessage("WhatsApp connected.");
-      setWaAccessToken("");
-      void queryClient.invalidateQueries({ queryKey: ["connected-accounts"] });
-      void queryClient.invalidateQueries({ queryKey: ["whatsapp-integration"] });
-      void queryClient.invalidateQueries({ queryKey: ["whatsapp-status"] });
-    },
-    onError: (err: Error) => setWaMessage(err.message),
-  });
-
   const accounts = accountsQuery.data ?? [];
   const hasActiveGmail = accounts.some(
     (a) => a.provider === "gmail" && a.status === "active",
   );
   const whatsapp = whatsAppQuery.data;
-  const whatsappConnected = Boolean(whatsapp?.connected);
+  const whatsappStatus = whatsapp?.status ?? "disconnected";
+  const whatsappConnected =
+    Boolean(whatsapp?.connected) && whatsappStatus === "connected";
+  const whatsappNeedsAttention =
+    whatsappStatus === "error" || whatsappStatus === "requires_reconnect";
   const embeddedSignupReady = Boolean(
     whatsAppConfigQuery.data?.embeddedSignupConfigured,
   );
+  const connectPending =
+    whatsAppConnectMutation.isPending || whatsappSignup.loading;
+
+  function handleConnectWhatsApp() {
+    setWaMessage(null);
+    whatsAppConnectMutation.mutate();
+  }
 
   return (
     <main className="flex flex-1 flex-col gap-6 p-6">
@@ -194,19 +183,10 @@ export function IntegrationsPage() {
         <div>
           <h2 className="font-medium">WhatsApp</h2>
           <p className="text-muted-foreground mt-1 text-sm">
-            Connect your company&apos;s WhatsApp Business account to message
-            leads directly from the platform.
+            Connect your business WhatsApp number to start messaging your
+            customers.
           </p>
         </div>
-
-        {!whatsappConnected && !embeddedSignupReady ? (
-          <p className="text-muted-foreground text-sm">
-            Use the form below with credentials from Meta Developer Console →
-            WhatsApp → API Setup. Or add{" "}
-            <code className="text-xs">META_EMBEDDED_SIGNUP_CONFIG_ID</code> to
-            enable one-click Meta signup.
-          </p>
-        ) : null}
 
         {waMessage || whatsappSignup.error ? (
           <p className="text-sm">{waMessage ?? whatsappSignup.error}</p>
@@ -217,14 +197,13 @@ export function IntegrationsPage() {
             <div className="rounded-md border border-green-500/30 bg-green-500/10 px-3 py-3 text-sm">
               <p className="font-medium text-green-100">Connected</p>
               <p className="mt-1">
-                {whatsapp?.displayName ?? "WhatsApp Business"}
+                Business: {whatsapp?.displayName ?? "WhatsApp Business"}
               </p>
               {whatsapp?.phoneNumber ? (
-                <p className="text-muted-foreground">{whatsapp.phoneNumber}</p>
+                <p className="text-muted-foreground">
+                  Phone: {whatsapp.phoneNumber}
+                </p>
               ) : null}
-              <p className="text-muted-foreground mt-2 text-xs capitalize">
-                Status: {whatsapp?.status ?? "connected"}
-              </p>
             </div>
             <div className="flex flex-wrap gap-2">
               <Button
@@ -232,7 +211,7 @@ export function IntegrationsPage() {
                 onClick={() => whatsAppTestMutation.mutate()}
                 disabled={whatsAppTestMutation.isPending}
               >
-                Test connection
+                Test Connection
               </Button>
               <Button
                 variant="outline"
@@ -251,80 +230,44 @@ export function IntegrationsPage() {
               </Button>
             </div>
           </div>
-        ) : (
-          <div className="space-y-4">
-            {embeddedSignupReady ? (
-              <Button
-                onClick={() => whatsAppConnectMutation.mutate()}
-                disabled={
-                  whatsAppConnectMutation.isPending || whatsappSignup.loading
-                }
-              >
-                {whatsAppConnectMutation.isPending || whatsappSignup.loading
-                  ? "Connecting…"
-                  : "Connect with Meta signup"}
-              </Button>
-            ) : null}
-
-            <div className="border-border space-y-3 rounded-md border p-4">
-              <div>
-                <h3 className="text-sm font-medium">
-                  Connect with API credentials
-                </h3>
+        ) : whatsappNeedsAttention ? (
+          <div className="space-y-3">
+            <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-3 text-sm">
+              <p className="font-medium text-amber-100">
+                Connection requires attention
+              </p>
+              <p className="text-muted-foreground mt-1">
+                Your WhatsApp connection is no longer active. Reconnect through
+                Meta to resume messaging.
+              </p>
+              {whatsapp?.phoneNumber ? (
                 <p className="text-muted-foreground mt-1 text-xs">
-                  Paste values from Meta Developer Console → your app → WhatsApp
-                  → API Setup. Your token is sent to the server once and stored
-                  encrypted — it is not saved in the browser.
+                  Last known: {whatsapp.displayName ?? "WhatsApp"} ·{" "}
+                  {whatsapp.phoneNumber}
                 </p>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="wa-phone-number-id">Phone number ID</Label>
-                <Input
-                  id="wa-phone-number-id"
-                  value={waPhoneNumberId}
-                  onChange={(e) => setWaPhoneNumberId(e.target.value)}
-                  placeholder="1317965221395330"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="wa-waba-id">WhatsApp Business account ID</Label>
-                <Input
-                  id="wa-waba-id"
-                  value={waWabaId}
-                  onChange={(e) => setWaWabaId(e.target.value)}
-                  placeholder="1467541085198955"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="wa-access-token">Access token</Label>
-                <Input
-                  id="wa-access-token"
-                  type="password"
-                  value={waAccessToken}
-                  onChange={(e) => setWaAccessToken(e.target.value)}
-                  placeholder="EAA…"
-                  autoComplete="off"
-                />
-              </div>
-              <Button
-                onClick={() => whatsAppManualConnectMutation.mutate()}
-                disabled={
-                  !waPhoneNumberId.trim() ||
-                  !waAccessToken.trim() ||
-                  whatsAppManualConnectMutation.isPending
-                }
-              >
-                {whatsAppManualConnectMutation.isPending
-                  ? "Connecting…"
-                  : "Connect WhatsApp"}
-              </Button>
+              ) : null}
             </div>
+            <Button onClick={handleConnectWhatsApp} disabled={connectPending}>
+              {connectPending ? "Connecting…" : "Reconnect WhatsApp"}
+            </Button>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {!embeddedSignupReady ? (
+              <p className="text-muted-foreground text-sm">
+                WhatsApp onboarding is not configured on this server. Contact
+                your administrator to enable Meta Embedded Signup.
+              </p>
+            ) : (
+              <Button onClick={handleConnectWhatsApp} disabled={connectPending}>
+                {connectPending ? "Connecting…" : "Connect WhatsApp"}
+              </Button>
+            )}
           </div>
         )}
 
         <p className="text-muted-foreground text-xs">
-          Requires TOKEN_ENCRYPTION_KEY in backend .env. Each WhatsApp message
-          debits 1 platform credit.
+          Each WhatsApp message debits 1 platform credit.
         </p>
       </section>
 

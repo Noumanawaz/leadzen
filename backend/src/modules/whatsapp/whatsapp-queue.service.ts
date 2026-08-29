@@ -9,6 +9,7 @@ import { Queue, Worker } from 'bullmq';
 import IORedis from 'ioredis';
 import { WhatsAppWebhookEventStatus } from '../../../generated/prisma/client';
 import type { AppEnv } from '../../config/env.validation';
+import { WhatsAppIntegrationService } from './whatsapp-integration.service';
 import { WhatsAppWebhookService } from './whatsapp-webhook.service';
 
 const QUEUE_NAME = 'whatsapp-webhooks';
@@ -22,6 +23,7 @@ export class WhatsAppQueueService implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly config: ConfigService<AppEnv, true>,
     private readonly webhook: WhatsAppWebhookService,
+    private readonly integration: WhatsAppIntegrationService,
   ) {}
 
   async onModuleInit() {
@@ -45,9 +47,22 @@ export class WhatsAppQueueService implements OnModuleInit, OnModuleDestroy {
             payload: unknown;
           };
           try {
-            await this.webhook.processPayload(payload as Parameters<
+            const typedPayload = payload as Parameters<
               WhatsAppWebhookService['processPayload']
-            >[0]);
+            >[0];
+            const phoneNumberId =
+              this.webhook.extractPhoneNumberId(typedPayload);
+            if (phoneNumberId) {
+              const account =
+                await this.integration.findAccountByPhoneNumberId(
+                  phoneNumberId,
+                );
+              await this.webhook.enrichWebhookEventContext(externalEventId, {
+                phoneNumberId,
+                organizationId: account?.organizationId,
+              });
+            }
+            await this.webhook.processPayload(typedPayload);
             await this.webhook.markEventProcessed(
               externalEventId,
               WhatsAppWebhookEventStatus.processed,
@@ -81,17 +96,33 @@ export class WhatsAppQueueService implements OnModuleInit, OnModuleDestroy {
   }
 
   async enqueue(externalEventId: string, payload: unknown) {
+    const typedPayload = payload as Parameters<
+      WhatsAppWebhookService['processPayload']
+    >[0];
+
     if (this.queue) {
       await this.queue.add(
         'event',
         { externalEventId, payload },
-        { removeOnComplete: 200, attempts: 3, backoff: { type: 'exponential', delay: 2000 } },
+        {
+          removeOnComplete: 200,
+          attempts: 3,
+          backoff: { type: 'exponential', delay: 2000 },
+        },
       );
       return;
     }
-    await this.webhook.processPayload(
-      payload as Parameters<WhatsAppWebhookService['processPayload']>[0],
-    );
+
+    const phoneNumberId = this.webhook.extractPhoneNumberId(typedPayload);
+    if (phoneNumberId) {
+      const account =
+        await this.integration.findAccountByPhoneNumberId(phoneNumberId);
+      await this.webhook.enrichWebhookEventContext(externalEventId, {
+        phoneNumberId,
+        organizationId: account?.organizationId,
+      });
+    }
+    await this.webhook.processPayload(typedPayload);
     await this.webhook.markEventProcessed(
       externalEventId,
       WhatsAppWebhookEventStatus.processed,

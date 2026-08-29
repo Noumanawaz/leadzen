@@ -219,4 +219,27 @@ export class WhatsAppWebhookService {
       data: { status, processedAt: new Date() },
     });
   }
+
+  async enrichWebhookEventContext(
+    externalEventId: string,
+    params: { phoneNumberId?: string; organizationId?: string },
+  ) {
+    await this.prisma.whatsAppWebhookEvent.updateMany({
+      where: { externalEventId },
+      data: {
+        phoneNumberId: params.phoneNumberId,
+        organizationId: params.organizationId,
+      },
+    });
+  }
+
+  extractPhoneNumberId(payload: WebhookPayload): string | undefined {
+    for (const entry of payload.entry ?? []) {
+      for (const change of entry.changes ?? []) {
+        const phoneNumberId = change.value?.metadata?.phone_number_id;
+        if (phoneNumberId) return phoneNumberId;
+      }
+    }
+    return undefined;
+  }
 }
