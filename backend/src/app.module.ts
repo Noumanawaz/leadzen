@@ -15,7 +15,6 @@ import { PermissionsModule } from './modules/permissions/permissions.module';
 import { PipelinesModule } from './modules/pipelines/pipelines.module';
 import { OutreachModule } from './modules/outreach/outreach.module';
 import { WhatsAppModule } from './modules/whatsapp/whatsapp.module';
-import { SequencesModule } from './modules/sequences/sequences.module';
 import { AiModule } from './modules/ai/ai.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { FeatureFlagsModule } from './modules/feature-flags/feature-flags.module';
@@ -46,7 +45,6 @@ import { DashboardModule } from './modules/dashboard/dashboard.module';
     BillingModule,
     OutreachModule,
     WhatsAppModule,
-    SequencesModule,
     AiModule,
     AdminModule,
     FeatureFlagsModule,

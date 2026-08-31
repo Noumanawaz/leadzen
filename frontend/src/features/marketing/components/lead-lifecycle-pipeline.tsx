@@ -1,6 +1,14 @@
 "use client";
 
-import { AnimatePresence, motion, useInView } from "motion/react";
+import {
+  AnimatePresence,
+  motion,
+  useInView,
+  useMotionValueEvent,
+  useScroll,
+  useSpring,
+  useTransform,
+} from "motion/react";
 import {
   Check,
   Clock,
@@ -13,9 +21,17 @@ import {
   UserPlus,
   Users,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { cn } from "@/lib/utils";
 import { usePrefersReducedMotion } from "@/components/motion/use-prefers-reduced-motion";
+
+type Point = { x: number; y: number };
 
 const LOOP_MS = 8000;
 
@@ -52,7 +68,7 @@ const STAGES = [
     id: "followup",
     label: "Follow Up",
     sub: "Never drop the thread",
-    tip: "Sequences keep follow-ups on schedule across email, WhatsApp, and calls.",
+    tip: "Stay on top of every thread with tasks, reminders, and multi-channel outreach.",
     icon: Clock,
   },
   {
@@ -260,7 +276,6 @@ function StageCard({
         )}
         animate={{
           scale: highlight ? 1.02 : 1,
-          opacity: active || highlight ? 1 : 0.55,
         }}
         transition={{ duration: 0.35 }}
       >
@@ -362,64 +377,162 @@ export function LeadSourceStrip() {
   );
 }
 
-function FlowConnector({
-  fromLeft,
-  active,
+/** Center-ish weave anchors so the snake passes through each floating card. */
+function cardFlowPoint(
+  rect: DOMRect,
+  container: DOMRect,
+  side: "left" | "right",
+): Point {
+  return {
+    x:
+      side === "left"
+        ? rect.left - container.left + rect.width * 0.72
+        : rect.left - container.left + rect.width * 0.28,
+    y: rect.top - container.top + rect.height * 0.5,
+  };
+}
+
+/**
+ * Continuous snake path through card anchors (Catmull-Rom → cubic Bézier).
+ * Matches the soft left↔right undulating curve in the design reference.
+ */
+function buildFlowPath(points: Point[]): string {
+  if (points.length < 2) return "";
+  if (points.length === 2) {
+    const [a, b] = points;
+    const midY = (a.y + b.y) / 2;
+    return `M ${a.x.toFixed(1)} ${a.y.toFixed(1)} C ${a.x.toFixed(1)} ${midY.toFixed(1)}, ${b.x.toFixed(1)} ${midY.toFixed(1)}, ${b.x.toFixed(1)} ${b.y.toFixed(1)}`;
+  }
+
+  let d = `M ${points[0].x.toFixed(1)} ${points[0].y.toFixed(1)}`;
+  for (let i = 0; i < points.length - 1; i++) {
+    const p0 = points[i === 0 ? 0 : i - 1];
+    const p1 = points[i];
+    const p2 = points[i + 1];
+    const p3 = points[i + 2] ?? p2;
+
+    // Catmull-Rom → cubic Bezier (tension 1) for C1-smooth snake
+    const c1x = p1.x + (p2.x - p0.x) / 6;
+    const c1y = p1.y + (p2.y - p0.y) / 6;
+    const c2x = p2.x - (p3.x - p1.x) / 6;
+    const c2y = p2.y - (p3.y - p1.y) / 6;
+
+    d += ` C ${c1x.toFixed(1)} ${c1y.toFixed(1)}, ${c2x.toFixed(1)} ${c2y.toFixed(1)}, ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`;
+  }
+  return d;
+}
+
+function FlowPathLayer({
+  pathD,
+  progress,
+  reduced,
+  width,
+  height,
 }: {
-  fromLeft: boolean;
-  active: boolean;
+  pathD: string;
+  progress: ReturnType<typeof useSpring>;
+  reduced: boolean;
+  width: number;
+  height: number;
 }) {
-  const path = fromLeft
-    ? "M 40 0 C 120 28, 200 36, 280 64"
-    : "M 280 0 C 200 28, 120 36, 40 64";
+  const pathRef = useRef<SVGPathElement>(null);
+  const [dot, setDot] = useState<Point | null>(null);
+  const drawProgress = useTransform(progress, (v) =>
+    reduced ? 1 : Math.min(1, Math.max(0, v)),
+  );
+
+  useMotionValueEvent(drawProgress, "change", (v) => {
+    const el = pathRef.current;
+    if (!el || !pathD) {
+      setDot(null);
+      return;
+    }
+    const length = el.getTotalLength();
+    if (!length) return;
+    const point = el.getPointAtLength(length * v);
+    setDot({ x: point.x, y: point.y });
+  });
+
+  useEffect(() => {
+    const el = pathRef.current;
+    if (!el || !pathD) return;
+    const length = el.getTotalLength();
+    if (!length) return;
+    const v = reduced ? 1 : drawProgress.get();
+    const point = el.getPointAtLength(length * v);
+    setDot({ x: point.x, y: point.y });
+  }, [pathD, reduced, drawProgress]);
+
+  if (!pathD || width <= 0 || height <= 0) return null;
 
   return (
-    <div className="relative h-14 w-full max-w-[320px]" aria-hidden>
-      <svg
-        viewBox="0 0 320 64"
-        className="h-full w-full overflow-visible"
-        preserveAspectRatio="none"
-      >
-        <path
-          d={path}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeDasharray="4 6"
-          className="text-emerald-400/25"
+    <svg
+      className="pointer-events-none absolute inset-0 z-0 overflow-visible"
+      width={width}
+      height={height}
+      viewBox={`0 0 ${width} ${height}`}
+      aria-hidden
+    >
+      <defs>
+        <filter
+          id="flow-path-glow"
+          x="-40%"
+          y="-20%"
+          width="180%"
+          height="140%"
+        >
+          <feGaussianBlur stdDeviation="3.5" result="blur" />
+          <feMerge>
+            <feMergeNode in="blur" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
+        <filter id="flow-dot-glow" x="-80%" y="-80%" width="260%" height="260%">
+          <feGaussianBlur stdDeviation="2.4" result="blur" />
+          <feMerge>
+            <feMergeNode in="blur" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
+      </defs>
+
+      {/* Soft under-glow (always visible faintly) */}
+      <path
+        d={pathD}
+        fill="none"
+        stroke="oklch(0.72 0.17 155)"
+        strokeWidth="1.25"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        opacity={0.22}
+        filter="url(#flow-path-glow)"
+      />
+
+      {/* Scroll-drawn neon snake — matches reference */}
+      <motion.path
+        ref={pathRef}
+        d={pathD}
+        fill="none"
+        stroke="oklch(0.78 0.18 155)"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        filter="url(#flow-path-glow)"
+        style={{ pathLength: drawProgress }}
+        initial={false}
+      />
+
+      {dot && !reduced ? (
+        <circle
+          cx={dot.x}
+          cy={dot.y}
+          r="4.5"
+          fill="oklch(0.82 0.18 155)"
+          filter="url(#flow-dot-glow)"
+          opacity={0.95}
         />
-        <motion.path
-          d={path}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          className="text-emerald-400/70"
-          initial={{ pathLength: 0, opacity: 0 }}
-          animate={{
-            pathLength: active ? 1 : 0,
-            opacity: active ? 1 : 0,
-          }}
-          transition={{ duration: 0.5, ease: "easeOut" }}
-        />
-        {active ? (
-          <motion.circle
-            r="4"
-            fill="oklch(0.75 0.16 160)"
-            animate={{
-              cx: fromLeft ? [40, 280] : [280, 40],
-              cy: [0, 64],
-            }}
-            transition={{
-              duration: 0.9,
-              ease: "easeInOut",
-              repeat: Infinity,
-              repeatDelay: 1.2,
-            }}
-          />
-        ) : null}
-      </svg>
-    </div>
+      ) : null}
+    </svg>
   );
 }
 
@@ -566,37 +679,81 @@ function ZigzagFlow({
   captureCount: number;
   reduced: boolean;
 }) {
-  const activeIndex = useMemo(() => {
-    const map: Record<Phase, number> = {
-      sources: -1,
-      capture: 0,
-      enrich: 1,
-      qualify: 2,
-      outreach: 3,
-      followup: 4,
-      won: 5,
-      reset: -1,
+  const containerRef = useRef<HTMLDivElement>(null);
+  const cardRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const [size, setSize] = useState({ width: 0, height: 0 });
+  const [pathD, setPathD] = useState("");
+
+  // Path draws while the flow container moves through the viewport
+  const { scrollYProgress: flowProgress } = useScroll({
+    target: containerRef,
+    offset: ["start 0.85", "end 0.2"],
+  });
+  const pathProgress = useSpring(flowProgress, {
+    stiffness: 70,
+    damping: 24,
+    restDelta: 0.001,
+  });
+
+  const measure = useCallback(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const containerRect = container.getBoundingClientRect();
+    setSize({
+      width: container.offsetWidth,
+      height: container.offsetHeight,
+    });
+
+    const points: Point[] = [];
+    for (let i = 0; i < STAGES.length; i++) {
+      const el = cardRefs.current[i];
+      if (!el) continue;
+      const rect = el.getBoundingClientRect();
+      const isLeft = i % 2 === 0;
+      points.push(cardFlowPoint(rect, containerRect, isLeft ? "left" : "right"));
+    }
+    setPathD(buildFlowPath(points));
+  }, []);
+
+  useLayoutEffect(() => {
+    measure();
+    const id = window.requestAnimationFrame(() => measure());
+    const ro = new ResizeObserver(() => measure());
+    if (containerRef.current) ro.observe(containerRef.current);
+    window.addEventListener("resize", measure);
+    return () => {
+      window.cancelAnimationFrame(id);
+      ro.disconnect();
+      window.removeEventListener("resize", measure);
     };
-    return map[phase];
-  }, [phase]);
+  }, [measure, phase, captureCount]);
 
   return (
-    <div className="relative mx-auto flex w-full max-w-xl flex-col items-center">
+    <div
+      ref={containerRef}
+      className="relative mx-auto flex w-full max-w-xl flex-col"
+    >
+      <FlowPathLayer
+        pathD={pathD}
+        progress={pathProgress}
+        reduced={reduced}
+        width={size.width}
+        height={size.height}
+      />
+
       {STAGES.map((stage, index) => {
         const isLeft = index % 2 === 0;
-        const connectorActive = activeIndex >= index && index > 0;
 
         return (
-          <div
+          <FlowStageRow
             key={stage.id}
-            className={cn(
-              "flex w-full flex-col",
-              isLeft ? "items-start" : "items-end",
-            )}
+            index={index}
+            isLeft={isLeft}
+            reduced={reduced}
+            cardRef={(el) => {
+              cardRefs.current[index] = el;
+            }}
           >
-            {index > 0 ? (
-              <FlowConnector fromLeft={!isLeft} active={connectorActive} />
-            ) : null}
             <StageCard
               stage={stage}
               wide
@@ -613,47 +770,158 @@ function ZigzagFlow({
                 captureCount={captureCount}
               />
             </StageCard>
-          </div>
+          </FlowStageRow>
         );
       })}
     </div>
   );
 }
 
+/**
+ * Per-card viewport progress:
+ * 0 = entering from bottom, ~0.35–0.65 = fully in frame, 1 = exiting top.
+ * Scroll down → appear. Scroll up / leave frame → reverse out.
+ */
+function FlowStageRow({
+  index,
+  isLeft,
+  reduced,
+  cardRef,
+  children,
+}: {
+  index: number;
+  isLeft: boolean;
+  reduced: boolean;
+  cardRef: (el: HTMLDivElement | null) => void;
+  children: React.ReactNode;
+}) {
+  const rowRef = useRef<HTMLDivElement | null>(null);
+
+  const { scrollYProgress } = useScroll({
+    target: rowRef,
+    offset: ["start end", "end start"],
+  });
+
+  // Enter → hold in frame → exit
+  const rawOpacity = useTransform(
+    scrollYProgress,
+    [0, 0.18, 0.72, 0.92],
+    reduced ? [1, 1, 1, 1] : [0, 1, 1, 0],
+  );
+  const rawY = useTransform(
+    scrollYProgress,
+    [0, 0.18, 0.72, 0.92],
+    reduced ? [0, 0, 0, 0] : [56, 0, 0, -40],
+  );
+  const rawScale = useTransform(
+    scrollYProgress,
+    [0, 0.18, 0.72, 0.92],
+    reduced ? [1, 1, 1, 1] : [0.92, 1, 1, 0.96],
+  );
+  const rawX = useTransform(
+    scrollYProgress,
+    [0, 0.18, 0.72, 0.92],
+    reduced
+      ? [0, 0, 0, 0]
+      : [isLeft ? -28 : 28, 0, 0, isLeft ? -16 : 16],
+  );
+
+  const opacity = useSpring(rawOpacity, { stiffness: 100, damping: 24 });
+  const y = useSpring(rawY, { stiffness: 100, damping: 24 });
+  const scale = useSpring(rawScale, { stiffness: 100, damping: 24 });
+  const x = useSpring(rawX, { stiffness: 100, damping: 24 });
+
+  const setRefs = useCallback(
+    (el: HTMLDivElement | null) => {
+      rowRef.current = el;
+      cardRef(el);
+    },
+    [cardRef],
+  );
+
+  return (
+    <div
+      className={cn(
+        "relative z-10 flex w-full flex-col",
+        isLeft ? "items-start" : "items-end",
+        index > 0 && "mt-10 sm:mt-14",
+      )}
+    >
+      <motion.div
+        ref={setRefs}
+        className="w-full will-change-transform sm:w-auto"
+        style={{ opacity, y, x, scale }}
+      >
+        {children}
+      </motion.div>
+    </div>
+  );
+}
+
+function SectionHeading({ reduced }: { reduced: boolean }) {
+  const headingRef = useRef<HTMLDivElement>(null);
+
+  const { scrollYProgress } = useScroll({
+    target: headingRef,
+    offset: ["start end", "end start"],
+  });
+
+  const rawOpacity = useTransform(
+    scrollYProgress,
+    [0, 0.2, 0.75, 0.95],
+    reduced ? [1, 1, 1, 1] : [0, 1, 1, 0],
+  );
+  const rawY = useTransform(
+    scrollYProgress,
+    [0, 0.2, 0.75, 0.95],
+    reduced ? [0, 0, 0, 0] : [48, 0, 0, -32],
+  );
+  const rawScale = useTransform(
+    scrollYProgress,
+    [0, 0.2, 0.75, 0.95],
+    reduced ? [1, 1, 1, 1] : [0.94, 1, 1, 0.97],
+  );
+
+  const opacity = useSpring(rawOpacity, { stiffness: 100, damping: 24 });
+  const y = useSpring(rawY, { stiffness: 100, damping: 24 });
+  const scale = useSpring(rawScale, { stiffness: 100, damping: 24 });
+
+  return (
+    <motion.div
+      ref={headingRef}
+      className="mx-auto max-w-2xl text-center will-change-transform"
+      style={{ opacity, y, scale }}
+    >
+      <p className="text-[11px] font-medium tracking-[0.2em] text-emerald-300/80 uppercase">
+        How it works
+      </p>
+      <h2 className="font-heading mt-3 text-2xl font-semibold tracking-tight text-white sm:text-3xl">
+        One path from lead to customer
+      </h2>
+      <p className="mt-3 text-sm leading-relaxed text-white/50 sm:text-base">
+        Every step connects to the next — capture, enrich, qualify, reach out,
+        follow up, and close.
+      </p>
+    </motion.div>
+  );
+}
+
 /** Full-width centered process flow — use as its own landing section */
 export function LeadLifecycleFlowSection() {
-  const { ref, inView, reduced, phase, captureCount } = usePipelineAnimation();
+  const { ref: pipelineRef, reduced, phase, captureCount } =
+    usePipelineAnimation();
 
   return (
     <section
       id="how-it-works"
-      ref={ref}
       className="relative border-t border-white/5 py-20 sm:py-28"
     >
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,oklch(0.55_0.14_160/0.08),transparent_65%)]" />
 
-      <div className="relative mx-auto max-w-6xl px-4 sm:px-6">
-        <div className="mx-auto max-w-2xl text-center">
-          <p className="text-[11px] font-medium tracking-[0.2em] text-emerald-300/80 uppercase">
-            How it works
-          </p>
-          <h2 className="font-heading mt-3 text-2xl font-semibold tracking-tight text-white sm:text-3xl">
-            One path from lead to customer
-          </h2>
-          <p className="mt-3 text-sm leading-relaxed text-white/50 sm:text-base">
-            Every step connects to the next — capture, enrich, qualify, reach
-            out, follow up, and close.
-          </p>
-        </div>
+      <div ref={pipelineRef} className="relative mx-auto max-w-6xl px-4 sm:px-6">
+        <SectionHeading reduced={reduced} />
 
-        <div
-          className="relative mx-auto mt-14 max-w-2xl"
-          style={{
-            opacity: reduced ? 1 : inView ? 1 : 0.85,
-            transition: "opacity 0.4s ease",
-          }}
-        >
-          <div className="pointer-events-none absolute top-8 bottom-8 left-1/2 hidden w-px -translate-x-1/2 bg-gradient-to-b from-transparent via-emerald-400/20 to-transparent sm:block" />
+        <div className="relative mx-auto mt-14 max-w-2xl">
           <ZigzagFlow
             phase={phase}
             captureCount={captureCount}

@@ -37,7 +37,6 @@ export const PERMISSIONS = [
   'contacts:delete',
   'pipelines:manage',
   'deals:manage',
-  'sequences:manage',
   'campaigns:manage',
   'integrations:connect',
   'api_keys:manage',
@@ -74,7 +73,6 @@ const MANAGER_PERMS: Permission[] = [
   'contacts:delete',
   'pipelines:manage',
   'deals:manage',
-  'sequences:manage',
   'campaigns:manage',
   'lead_sources:manage',
 ];

@@ -41,7 +41,6 @@ export class BillingService {
         maxUsers: true,
         maxLeads: true,
         maxPipelines: true,
-        maxSequences: true,
         maxConnectedAccounts: true,
         stripePriceId: true,
       },

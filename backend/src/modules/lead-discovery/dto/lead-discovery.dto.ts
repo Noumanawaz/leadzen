@@ -64,7 +64,6 @@ export class CreateReferralLinkDto {
   @IsOptional() @IsString() code?: string;
   @IsOptional() @IsString() name?: string;
   @IsOptional() @IsString() pipelineId?: string;
-  @IsOptional() @IsString() sequenceId?: string;
 }
 
 export class CreateApiKeyDto {

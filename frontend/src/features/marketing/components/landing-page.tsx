@@ -20,7 +20,7 @@ const promises = [
   },
   {
     title: "Outreach that converts",
-    body: "Email sequences run for real. WhatsApp uses your connected Meta Business account. SMS and calls remain placeholders until providers are connected.",
+    body: "Email and WhatsApp run through your connected accounts. SMS and calls remain placeholders until providers are connected.",
   },
 ];
 

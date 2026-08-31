@@ -103,7 +103,6 @@ model Plan {
   maxLeads              Int      @map("max_leads")
   maxStorageBytes       BigInt   @map("max_storage_bytes")
   maxPipelines          Int      @map("max_pipelines")
-  maxSequences          Int      @map("max_sequences")
   maxConnectedAccounts  Int      @map("max_connected_accounts")
   includedAiCredits     Int      @map("included_ai_credits")
   amountCents           Int      @default(0) @map("amount_cents")
@@ -161,7 +160,6 @@ model Organization {
   billingEvents      BillingEvent[]
   messages           Message[]
   suppressions       Suppression[]
-  sequences          Sequence[]
   campaigns          Campaign[]
   automationRules    AutomationRule[]
   aiRequests         AiRequest[]
@@ -683,7 +681,6 @@ model Lead {
   stageHistory  StageHistory[]
   customValues  CustomFieldValue[]
   messages      Message[]
-  sequenceEnrollments SequenceEnrollment[]
 
   @@index([organizationId])
   @@index([organizationId, createdAt])
@@ -920,40 +917,6 @@ model AiRequest {
   @@map("ai_requests")
 }
 
-enum SequenceStatus {
-  draft
-  active
-  paused
-  archived
-}
-
-enum SequenceStepChannel {
-  email
-  whatsapp
-  sms
-  call
-  wait
-}
-
-enum SequenceCondition {
-  none
-  opened
-  clicked
-  replied
-  bounced
-  lead_score_gte
-  status_equals
-  has_tag
-}
-
-enum EnrollmentStatus {
-  active
-  completed
-  stopped
-  paused
-  failed
-}
-
 enum AutomationTrigger {
   lead_created
   lead_updated
@@ -964,71 +927,9 @@ enum AutomationTrigger {
   task_completed
 }
 
-model Sequence {
-  id             String         @id @default(cuid())
-  organizationId String         @map("organization_id")
-  name           String
-  status         SequenceStatus @default(draft)
-  createdAt      DateTime       @default(now()) @map("created_at")
-  updatedAt      DateTime       @updatedAt @map("updated_at")
-
-  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  steps        SequenceStep[]
-  enrollments  SequenceEnrollment[]
-  campaigns    Campaign[]
-
-  @@index([organizationId, status])
-  @@map("sequences")
-}
-
-model SequenceStep {
-  id             String              @id @default(cuid())
-  sequenceId     String              @map("sequence_id")
-  position       Int
-  channel        SequenceStepChannel
-  delayDays      Int                 @default(0) @map("delay_days")
-  subject        String?
-  body           String?
-  condition      SequenceCondition   @default(none)
-  conditionValue String?             @map("condition_value")
-  yesNextStepId  String?             @map("yes_next_step_id")
-  noNextStepId   String?             @map("no_next_step_id")
-  createdAt      DateTime            @default(now()) @map("created_at")
-  updatedAt      DateTime            @updatedAt @map("updated_at")
-
-  sequence    Sequence             @relation(fields: [sequenceId], references: [id], onDelete: Cascade)
-  enrollments SequenceEnrollment[]
-
-  @@index([sequenceId, position])
-  @@map("sequence_steps")
-}
-
-model SequenceEnrollment {
-  id             String           @id @default(cuid())
-  organizationId String           @map("organization_id")
-  sequenceId     String           @map("sequence_id")
-  leadId         String           @map("lead_id")
-  currentStepId  String?          @map("current_step_id")
-  status         EnrollmentStatus @default(active)
-  nextRunAt      DateTime?        @map("next_run_at")
-  stoppedReason  String?          @map("stopped_reason")
-  lastError      String?          @map("last_error")
-  createdAt      DateTime         @default(now()) @map("created_at")
-  updatedAt      DateTime         @updatedAt @map("updated_at")
-
-  sequence    Sequence      @relation(fields: [sequenceId], references: [id], onDelete: Cascade)
-  currentStep SequenceStep? @relation(fields: [currentStepId], references: [id], onDelete: SetNull)
-  lead        Lead          @relation(fields: [leadId], references: [id], onDelete: Cascade)
-
-  @@unique([sequenceId, leadId])
-  @@index([organizationId, status, nextRunAt])
-  @@map("sequence_enrollments")
-}
-
 model Campaign {
   id             String   @id @default(cuid())
   organizationId String   @map("organization_id")
-  sequenceId     String?  @map("sequence_id")
   name           String
   sent           Int      @default(0)
   delivered      Int      @default(0)
@@ -1043,7 +944,6 @@ model Campaign {
   updatedAt      DateTime @updatedAt @map("updated_at")
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  sequence     Sequence?    @relation(fields: [sequenceId], references: [id], onDelete: SetNull)
 
   @@index([organizationId])
   @@map("campaigns")
@@ -1247,7 +1147,6 @@ model ReferralLink {
   name           String?
   campaignMeta   Json     @default("{}") @map("campaign_meta")
   pipelineId     String?  @map("pipeline_id")
-  sequenceId     String?  @map("sequence_id")
   clickCount     Int      @default(0) @map("click_count")
   leadCount      Int      @default(0) @map("lead_count")
   isActive       Boolean  @default(true) @map("is_active")

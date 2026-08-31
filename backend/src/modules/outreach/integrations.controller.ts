@@ -234,7 +234,7 @@ export class IntegrationsController {
   @ApiBearerAuth()
   @ApiHeader({ name: 'x-organization-id', required: true })
   @UseGuards(AuthGuard, OrgMembershipGuard, PermissionsGuard)
-  @RequirePermissions('sequences:manage')
+  @RequirePermissions('integrations:connect')
   @Post('suppressions')
   addSuppression(
     @OrgId() organizationId: string,
@@ -262,7 +262,7 @@ export class IntegrationsController {
   @ApiBearerAuth()
   @ApiHeader({ name: 'x-organization-id', required: true })
   @UseGuards(AuthGuard, OrgMembershipGuard, PermissionsGuard)
-  @RequirePermissions('sequences:manage')
+  @RequirePermissions('integrations:connect')
   @Delete('suppressions/:id')
   removeSuppression(
     @OrgId() organizationId: string,

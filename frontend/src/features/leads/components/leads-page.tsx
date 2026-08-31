@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { apiClient } from "@/lib/api/client";
@@ -35,8 +35,6 @@ type LeadRow = {
   pipelineStage?: { id: string; name: string } | null;
 };
 
-type SequenceRow = { id: string; name: string; status: string };
-
 function leadLabel(lead: LeadRow) {
   return (
     [lead.firstName, lead.lastName].filter(Boolean).join(" ") ||
@@ -55,8 +53,6 @@ export function LeadsPage() {
   const [lastName, setLastName] = useState("");
   const [phone, setPhone] = useState("");
   const [stageId, setStageId] = useState("");
-  const [enrollLeadId, setEnrollLeadId] = useState("");
-  const [enrollSequenceId, setEnrollSequenceId] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [contactLead, setContactLead] = useState<LeadContactTarget | null>(
     null,
@@ -87,16 +83,6 @@ export function LeadsPage() {
         `/v1/leads${search ? `?search=${encodeURIComponent(search)}` : ""}`,
       ),
   });
-
-  const sequencesQuery = useQuery({
-    queryKey: ["sequences"],
-    queryFn: () => apiClient<SequenceRow[]>("/v1/sequences"),
-  });
-
-  const activeSequences = useMemo(
-    () => (sequencesQuery.data ?? []).filter((s) => s.status === "active"),
-    [sequencesQuery.data],
-  );
 
   useGlobalLoaderEffect(
     "leads-page",
@@ -129,7 +115,7 @@ export function LeadsPage() {
       setMessage(
         `Created ${leadLabel(lead)}${
           lead.pipelineStage?.name ? ` in ${lead.pipelineStage.name}` : ""
-        }. Open Pipelines to move stages, or enroll below.`,
+        }. Open Pipelines to move stages.`,
       );
       void queryClient.invalidateQueries({ queryKey: ["leads"] });
     },
@@ -153,21 +139,6 @@ export function LeadsPage() {
       void queryClient.invalidateQueries({ queryKey: ["leads"] });
       setMessage("Lead stage updated.");
     },
-  });
-
-  const enrollMutation = useMutation({
-    mutationFn: () =>
-      apiClient(`/v1/sequences/${enrollSequenceId}/enroll`, {
-        method: "POST",
-        body: JSON.stringify({ leadId: enrollLeadId }),
-      }),
-    onSuccess: () => {
-      setMessage(
-        "Lead enrolled in sequence. Steps run automatically (~30s). Open Sequences to stop or inspect.",
-      );
-      void queryClient.invalidateQueries({ queryKey: ["sequences"] });
-    },
-    onError: (err) => setMessage((err as Error).message),
   });
 
   const deleteMutation = useMutation({
@@ -202,8 +173,8 @@ export function LeadsPage() {
         <div className="min-w-0">
           <h1 className="text-xl font-semibold tracking-tight">Leads</h1>
           <p className="text-muted-foreground text-sm">
-            Create prospects, put them on a pipeline stage, enroll in sequences,
-            or contact via email / WhatsApp
+            Create prospects, put them on a pipeline stage, or contact via email
+            / WhatsApp
           </p>
         </div>
         <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center lg:w-auto lg:min-w-[28rem]">
@@ -283,64 +254,6 @@ export function LeadsPage() {
             Create lead
           </Button>
         </div>
-      </section>
-
-      <section className="border-border space-y-3 rounded-lg border p-4">
-        <h2 className="text-sm font-medium">Enroll in sequence</h2>
-        <p className="text-muted-foreground text-xs">
-          Starts the automated email / WhatsApp / SMS / call cadence for this
-          lead. Build sequences on the{" "}
-          <Link href="/sequences" className="underline">
-            Sequences
-          </Link>{" "}
-          page.
-        </p>
-        <div className="grid gap-3 sm:grid-cols-3">
-          <select
-            className="border-input bg-background h-9 rounded-md border px-3 text-sm"
-            value={enrollLeadId}
-            onChange={(e) => setEnrollLeadId(e.target.value)}
-          >
-            <option value="">Select lead…</option>
-            {(leadsQuery.data ?? []).map((l) => (
-              <option key={l.id} value={l.id}>
-                {leadLabel(l)}
-              </option>
-            ))}
-          </select>
-          <select
-            className="border-input bg-background h-9 rounded-md border px-3 text-sm"
-            value={enrollSequenceId}
-            onChange={(e) => setEnrollSequenceId(e.target.value)}
-          >
-            <option value="">Active sequence…</option>
-            {activeSequences.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
-          <Button
-            onClick={() => enrollMutation.mutate()}
-            disabled={
-              !enrollLeadId ||
-              !enrollSequenceId ||
-              enrollMutation.isPending ||
-              !activeSequences.length
-            }
-          >
-            Enroll
-          </Button>
-        </div>
-        {!activeSequences.length ? (
-          <p className="text-muted-foreground text-xs">
-            No active sequences. Create one on{" "}
-            <Link href="/sequences" className="underline">
-              Sequences
-            </Link>{" "}
-            and click Activate first.
-          </p>
-        ) : null}
       </section>
 
       <LeadsTable

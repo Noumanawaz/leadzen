@@ -90,8 +90,8 @@ export function PrivacyPolicyPage() {
                 channels (including WhatsApp via Meta and email via Google)
               </li>
               <li>
-                Process lead discovery, enrichment, scoring, sequences, and
-                workflow features you enable
+                Process lead discovery, enrichment, scoring, and workflow
+                features you enable
               </li>
               <li>Process payments and manage subscriptions</li>
               <li>

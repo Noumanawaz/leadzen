@@ -10,7 +10,6 @@ export type EntitlementLimits = {
   maxLeads: number;
   maxStorageBytes: bigint;
   maxPipelines: number;
-  maxSequences: number;
   maxConnectedAccounts: number;
   includedAiCredits: number;
 };
@@ -35,7 +34,6 @@ export class EntitlementService {
       maxLeads: org.plan.maxLeads,
       maxStorageBytes: org.plan.maxStorageBytes,
       maxPipelines: org.plan.maxPipelines,
-      maxSequences: org.plan.maxSequences,
       maxConnectedAccounts: org.plan.maxConnectedAccounts,
       includedAiCredits: org.plan.includedAiCredits,
     };
