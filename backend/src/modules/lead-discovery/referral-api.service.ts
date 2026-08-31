@@ -28,7 +28,6 @@ export class ReferralLinksService {
       code?: string;
       name?: string;
       pipelineId?: string;
-      sequenceId?: string;
     },
   ) {
     const code =
@@ -40,7 +39,6 @@ export class ReferralLinksService {
         code,
         name: data.name,
         pipelineId: data.pipelineId,
-        sequenceId: data.sequenceId,
       },
     });
   }

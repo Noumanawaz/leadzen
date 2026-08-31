@@ -70,7 +70,7 @@ Manual token entry is **not available** in the tenant UI. Legacy manual connecti
 
 ## 5. Sending messages
 
-Agents send from the lead **Contact** sheet or via **Sequences** (WhatsApp channel).
+Agents send from the lead **Contact** sheet.
 
 - Text messages use the Cloud API messages endpoint
 - HTTP success means accepted by Meta — final delivery comes via webhook (`sent`, `delivered`, `read`, `failed`)

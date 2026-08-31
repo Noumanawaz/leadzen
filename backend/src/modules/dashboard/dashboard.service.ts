@@ -1,6 +1,5 @@
 import { Injectable } from '@nestjs/common';
 import {
-  EnrollmentStatus,
   MessageDirection,
   TaskStatus,
 } from '../../../generated/prisma/client';
@@ -17,7 +16,6 @@ export class DashboardService {
       leadsTotal,
       leadsNewWeek,
       openTasks,
-      activeEnrollments,
       messagesOutWeek,
       dealsOpen,
       dealsWon,
@@ -41,9 +39,6 @@ export class DashboardService {
           organizationId,
           status: { not: TaskStatus.completed },
         },
-      }),
-      this.prisma.sequenceEnrollment.count({
-        where: { organizationId, status: EnrollmentStatus.active },
       }),
       this.prisma.message.count({
         where: {
@@ -103,7 +98,6 @@ export class DashboardService {
       leadsTotal,
       leadsNewWeek,
       openTasks,
-      activeEnrollments,
       messagesOutWeek,
       dealsOpen,
       dealsWon,

@@ -27,7 +27,6 @@ type DashboardStats = {
   leadsTotal: number;
   leadsNewWeek: number;
   openTasks: number;
-  activeEnrollments: number;
   messagesOutWeek: number;
   dealsOpen: number;
   dealsWon: number;
@@ -86,26 +85,21 @@ export function DashboardPage() {
           delay={0.11}
         />
         <StatTile
-          label="Active enrollments"
-          value={data?.activeEnrollments ?? "—"}
-          delay={0.14}
-        />
-        <StatTile
           label="Messages (7d)"
           value={data?.messagesOutWeek ?? "—"}
-          delay={0.17}
+          delay={0.14}
         />
         <StatTile
           label="Open deals"
           value={data?.dealsOpen ?? "—"}
-          delay={0.2}
+          delay={0.17}
         />
         <StatTile
           label="Won deals"
           value={data?.dealsWon ?? "—"}
-          delay={0.23}
+          delay={0.2}
         />
-        <StatTile label="Credits" value={data?.credits ?? "—"} delay={0.26} />
+        <StatTile label="Credits" value={data?.credits ?? "—"} delay={0.23} />
       </div>
 
       <FadeIn delay={0.12}>

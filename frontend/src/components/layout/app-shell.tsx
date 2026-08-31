@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -27,7 +28,6 @@ const navGroups = [
     label: "Outreach",
     items: [
       { href: "/pipelines", label: "Pipelines" },
-      { href: "/sequences", label: "Sequences" },
       { href: "/ai", label: "AI" },
     ],
   },
@@ -131,11 +131,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="bg-background flex min-h-full flex-1">
       <aside className="bg-sidebar text-sidebar-foreground border-sidebar-border hidden w-60 flex-col border-r p-4 md:flex">
-        <Link
-          href="/dashboard"
-          className="font-heading mb-6 text-base font-semibold tracking-tight text-white"
-        >
-          Lead SaaS
+        <Link href="/dashboard" className="mb-6 inline-flex items-center">
+          <Image
+            src="/whitelogo.png"
+            alt="Lead SaaS"
+            width={168}
+            height={48}
+            className="h-9 w-auto"
+            priority
+          />
         </Link>
 
         <label className="mb-1 text-[10px] font-medium tracking-wider text-white/40 uppercase">

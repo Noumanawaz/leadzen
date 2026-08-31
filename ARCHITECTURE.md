@@ -9,7 +9,7 @@ Multi-tenant B2B lead management platform with a separate **platform admin** sur
 | Frontend | Next.js (App Router), TypeScript, Tailwind, shadcn/ui, TanStack Query |
 | Backend | NestJS, TypeScript, REST (`/api`), Prisma 7 |
 | Database | **Neon Postgres** (pooled `DATABASE_URL` + direct `DIRECT_URL` for migrations) |
-| Cache / queues | Redis (Docker Compose), BullMQ sequence worker |
+| Cache / queues | Redis (Docker Compose), BullMQ workers (imports, WhatsApp) |
 | AI | Groq (`GROQ_API_KEY`, `GROQ_MODEL`) |
 | Billing | Stripe test/live keys + webhook secret |
 | Email | Gmail OAuth (`GOOGLE_*`) |
@@ -51,7 +51,6 @@ Multi-tenant B2B lead management platform with a separate **platform admin** sur
 | Credits | `CreditService` (row lock / transactional debit) |
 | Usage | `UsageService` (append-only; provider cost separate) |
 | Outreach | `OutreachRouter` + suppressions |
-| Sequences | BullMQ worker + in-process fallback |
 | AI | `AiProvider` / `GroqProvider` + `ai_requests` |
 | Flags | `FeatureFlagsService` (global + org override) |
 | Audit | `AuditService` (append-only) |
@@ -59,7 +58,7 @@ Multi-tenant B2B lead management platform with a separate **platform admin** sur
 ## Queue topology
 
 - Redis URL: `REDIS_URL` (default `redis://localhost:6379`)
-- Queue: `sequence-steps` (BullMQ). If Redis is down at boot, sequences tick in-process every 30s.
+- Queues: lead imports + WhatsApp webhooks (BullMQ). If Redis is down at boot, those paths fall back to inline processing.
 
 ## Env vars (names only)
 
@@ -74,7 +73,7 @@ Multi-tenant B2B lead management platform with a separate **platform admin** sur
 | 2 CRM | Complete (API) | UI thin: lists only — no kanban/deals/lead detail |
 | 3 Billing | Complete | Needs `STRIPE_WEBHOOK_SECRET` for live webhooks |
 | 4 Communications | Complete (API) | Gmail UI done; WhatsApp/SMS/Phone stubs have **no UI** |
-| 5 Automation | Complete | Sequences UI; campaigns/rules mostly API |
+| 5 Automation | Partial | Campaigns/rules mostly API; sequence automation removed |
 | 6 AI | Complete | Groq model `openai/gpt-oss-20b` |
 | 7 Platform admin | Complete | Allowlist + `/admin/*` |
 | 8 Hardening | Complete | Rate limits, GDPR APIs, regression tests |
