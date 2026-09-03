@@ -5,27 +5,30 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { apiClient } from "@/lib/api/client";
-
-type LeadForm = {
-  id: string;
-  publicId: string;
-  name: string;
-  isActive: boolean;
-  submissionCount: number;
-};
+import {
+  buildEmbedHtml,
+  parseLeadFormPresentation,
+} from "../lib/lead-form-fields";
+import {
+  LeadFormCustomizeSheet,
+  type LeadFormRecord,
+} from "./lead-form-customize-sheet";
+import { LeadFormPreview } from "./lead-form-preview";
 
 export function LeadFormsSettingsPage() {
   const qc = useQueryClient();
   const [name, setName] = useState("Website contact");
   const [message, setMessage] = useState<string | null>(null);
+  const [editing, setEditing] = useState<LeadFormRecord | null>(null);
+  const [customizeOpen, setCustomizeOpen] = useState(false);
   const formsQuery = useQuery({
     queryKey: ["lead-forms"],
-    queryFn: () => apiClient<LeadForm[]>("/v1/lead-forms"),
+    queryFn: () => apiClient<LeadFormRecord[]>("/v1/lead-forms"),
   });
 
   const createMutation = useMutation({
     mutationFn: () =>
-      apiClient<LeadForm>("/v1/lead-forms", {
+      apiClient<LeadFormRecord>("/v1/lead-forms", {
         method: "POST",
         body: JSON.stringify({ name }),
       }),
@@ -33,6 +36,8 @@ export function LeadFormsSettingsPage() {
       setMessage(
         `Created. Public URL: ${typeof window !== "undefined" ? window.location.origin : ""}/public/forms/${form.publicId}`,
       );
+      setEditing(form);
+      setCustomizeOpen(true);
       void qc.invalidateQueries({ queryKey: ["lead-forms"] });
     },
     onError: (e: Error) => setMessage(e.message),
@@ -41,7 +46,7 @@ export function LeadFormsSettingsPage() {
   const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000/api";
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6 p-6">
+    <div className="mx-auto max-w-4xl space-y-6 p-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Lead forms</h1>
         <p className="text-muted-foreground mt-1 text-sm">
@@ -50,32 +55,101 @@ export function LeadFormsSettingsPage() {
       </div>
       <div className="flex gap-2">
         <Input value={name} onChange={(e) => setName(e.target.value)} />
-        <Button onClick={() => createMutation.mutate()}>Create</Button>
+        <Button
+          onClick={() => createMutation.mutate()}
+          disabled={createMutation.isPending}
+        >
+          Create
+        </Button>
       </div>
       {message ? <p className="text-sm">{message}</p> : null}
       <ul className="divide-border divide-y rounded-lg border">
-        {(formsQuery.data ?? []).map((form) => (
-          <li key={form.id} className="space-y-1 p-3 text-sm">
-            <div className="font-medium">{form.name}</div>
-            <div className="text-muted-foreground font-mono text-xs">
-              Frontend: /public/forms/{form.publicId}
-            </div>
-            <div className="text-muted-foreground font-mono text-xs">
-              API: {apiBase}/public/forms/{form.publicId}
-            </div>
-            <div className="text-muted-foreground text-xs">
-              Submissions: {form.submissionCount}
-            </div>
-            <pre className="bg-muted overflow-x-auto rounded p-2 text-xs">{`<form action="${apiBase}/public/forms/${form.publicId}/submit" method="POST">
-  <input name="email" required />
-  <input name="firstName" />
-  <input name="companyName" />
-  <input name="website_url" style="display:none" />
-  <button type="submit">Send</button>
-</form>`}</pre>
-          </li>
-        ))}
+        {(formsQuery.data ?? []).map((form) => {
+          const presentation = parseLeadFormPresentation(form);
+          const submitUrl = `${apiBase}/public/forms/${form.publicId}/submit`;
+          const embed = buildEmbedHtml(submitUrl, presentation.fields, {
+            submitLabel: presentation.submitLabel,
+            honeypot: presentation.honeypot,
+          });
+          return (
+            <li key={form.id} className="space-y-4 p-4 text-sm">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0 space-y-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="font-medium">{form.name}</div>
+                    <span
+                      className={
+                        form.isActive
+                          ? "rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11px] text-emerald-700 dark:text-emerald-300"
+                          : "bg-muted text-muted-foreground rounded-full px-2 py-0.5 text-[11px]"
+                      }
+                    >
+                      {form.isActive ? "Active" : "Inactive"}
+                    </span>
+                  </div>
+                  <div className="text-muted-foreground font-mono text-xs">
+                    Frontend: /public/forms/{form.publicId}
+                  </div>
+                  <div className="text-muted-foreground font-mono text-xs">
+                    API: {apiBase}/public/forms/{form.publicId}
+                  </div>
+                  <div className="text-muted-foreground text-xs">
+                    Submissions: {form.submissionCount} · Fields:{" "}
+                    {presentation.fields.map((f) => f.label).join(", ")}
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant="secondary"
+                    onClick={() => {
+                      setEditing(form);
+                      setCustomizeOpen(true);
+                    }}
+                  >
+                    Customize
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() =>
+                      window.open(
+                        `/public/forms/${form.publicId}`,
+                        "_blank",
+                        "noopener,noreferrer",
+                      )
+                    }
+                  >
+                    Open
+                  </Button>
+                </div>
+              </div>
+
+              <div className="grid gap-4 lg:grid-cols-2">
+                <div className="space-y-2">
+                  <div className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
+                    Preview
+                  </div>
+                  <LeadFormPreview presentation={presentation} />
+                </div>
+                <div className="space-y-2">
+                  <div className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
+                    Embed snippet
+                  </div>
+                  <pre className="bg-muted overflow-x-auto rounded-lg p-3 text-xs">
+                    {embed}
+                  </pre>
+                </div>
+              </div>
+            </li>
+          );
+        })}
       </ul>
+
+      <LeadFormCustomizeSheet
+        form={editing}
+        open={customizeOpen}
+        onOpenChange={setCustomizeOpen}
+      />
     </div>
   );
 }

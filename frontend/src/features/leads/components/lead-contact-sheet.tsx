@@ -307,7 +307,7 @@ export function LeadContactSheet({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="right"
-        className="flex h-full w-full max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-none sm:w-[min(100vw,56rem)]"
+        className="flex h-full w-full max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-none sm:w-[50vw]"
       >
         <SheetHeader className="border-border shrink-0 border-b px-6 py-5 pr-14">
           <SheetTitle className="text-lg">{leadLabel(lead)}</SheetTitle>

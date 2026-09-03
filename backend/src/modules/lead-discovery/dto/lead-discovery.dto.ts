@@ -1,5 +1,6 @@
 import {
   IsArray,
+  IsBoolean,
   IsEnum,
   IsNumber,
   IsObject,
@@ -58,6 +59,14 @@ export class CreateLeadFormDto {
   @IsOptional() fields?: unknown;
   @IsOptional() automation?: unknown;
   @IsOptional() spamSettings?: unknown;
+}
+
+export class UpdateLeadFormDto {
+  @IsOptional() @IsString() name?: string;
+  @IsOptional() fields?: unknown;
+  @IsOptional() automation?: unknown;
+  @IsOptional() spamSettings?: unknown;
+  @IsOptional() @IsBoolean() isActive?: boolean;
 }
 
 export class CreateReferralLinkDto {

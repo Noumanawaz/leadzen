@@ -34,13 +34,50 @@ export class LeadFormsService {
         publicId: `lf_${randomBytes(12).toString('hex')}`,
         name: data.name,
         fields: (data.fields as never) ?? [
-          { key: 'email', label: 'Email', required: true },
-          { key: 'firstName', label: 'First name', required: false },
-          { key: 'lastName', label: 'Last name', required: false },
-          { key: 'companyName', label: 'Company', required: false },
+          { key: 'email', label: 'Email', type: 'email', required: true },
+          { key: 'firstName', label: 'First name', type: 'text', required: false },
+          { key: 'lastName', label: 'Last name', type: 'text', required: false },
+          { key: 'companyName', label: 'Company', type: 'text', required: false },
         ],
-        automation: (data.automation as never) ?? {},
+        automation: (data.automation as never) ?? {
+          description: "Fill out the form below and we'll be in touch.",
+          submitLabel: 'Submit',
+        },
         spamSettings: (data.spamSettings as never) ?? { honeypot: true },
+      },
+    });
+  }
+
+  async update(
+    organizationId: string,
+    id: string,
+    data: {
+      name?: string;
+      fields?: unknown;
+      automation?: unknown;
+      spamSettings?: unknown;
+      isActive?: boolean;
+    },
+  ) {
+    const existing = await this.prisma.leadForm.findFirst({
+      where: { id, organizationId },
+    });
+    if (!existing) throw new NotFoundException('Form not found');
+
+    return this.prisma.leadForm.update({
+      where: { id },
+      data: {
+        ...(data.name !== undefined ? { name: data.name } : {}),
+        ...(data.fields !== undefined
+          ? { fields: data.fields as never }
+          : {}),
+        ...(data.automation !== undefined
+          ? { automation: data.automation as never }
+          : {}),
+        ...(data.spamSettings !== undefined
+          ? { spamSettings: data.spamSettings as never }
+          : {}),
+        ...(data.isActive !== undefined ? { isActive: data.isActive } : {}),
       },
     });
   }
@@ -52,10 +89,26 @@ export class LeadFormsService {
         publicId: true,
         name: true,
         fields: true,
+        automation: true,
+        spamSettings: true,
       },
     });
     if (!form) throw new NotFoundException('Form not found');
-    return form;
+    const automation = (form.automation ?? {}) as {
+      description?: string;
+      submitLabel?: string;
+    };
+    const spam = (form.spamSettings ?? {}) as { honeypot?: boolean };
+    return {
+      publicId: form.publicId,
+      name: form.name,
+      fields: form.fields,
+      description:
+        automation.description ??
+        "Fill out the form below and we'll be in touch.",
+      submitLabel: automation.submitLabel ?? 'Submit',
+      honeypot: spam.honeypot !== false,
+    };
   }
 
   async submit(

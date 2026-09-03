@@ -6,6 +6,10 @@ import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  inputTypeForField,
+  parseLeadFormPresentation,
+} from "../lib/lead-form-fields";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000/api";
@@ -14,46 +18,16 @@ type PublicForm = {
   publicId: string;
   name: string;
   fields?: unknown;
+  description?: string;
+  submitLabel?: string;
+  honeypot?: boolean;
 };
-
-type FormField = {
-  name: string;
-  label?: string;
-  type?: string;
-  required?: boolean;
-};
-
-const DEFAULT_FIELDS: FormField[] = [
-  { name: "firstName", label: "First name" },
-  { name: "lastName", label: "Last name" },
-  { name: "email", label: "Email", type: "email", required: true },
-  { name: "phone", label: "Phone" },
-  { name: "companyName", label: "Company" },
-];
-
-function normalizeFields(fields: unknown): FormField[] {
-  if (!Array.isArray(fields) || !fields.length) return DEFAULT_FIELDS;
-  return fields
-    .map((f) => {
-      if (!f || typeof f !== "object") return null;
-      const row = f as Record<string, unknown>;
-      const name = String(row.name ?? row.key ?? "");
-      if (!name) return null;
-      return {
-        name,
-        label: String(row.label ?? name),
-        type: String(row.type ?? "text"),
-        required: Boolean(row.required),
-      } satisfies FormField;
-    })
-    .filter(Boolean) as FormField[];
-}
 
 export function PublicLeadFormPage() {
   const params = useParams<{ publicId: string }>();
   const publicId = params.publicId;
   const [values, setValues] = useState<Record<string, string>>({});
-  const [honeypot, setHoneypot] = useState("");
+  const [honeypotValue, setHoneypotValue] = useState("");
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -73,15 +47,18 @@ export function PublicLeadFormPage() {
     retry: false,
   });
 
-  const fields = useMemo(
-    () => normalizeFields(formQuery.data?.fields),
-    [formQuery.data?.fields],
+  const presentation = useMemo(
+    () =>
+      formQuery.data
+        ? parseLeadFormPresentation(formQuery.data)
+        : null,
+    [formQuery.data],
   );
 
   const submitMutation = useMutation({
     mutationFn: async () => {
       const payload: Record<string, string> = { ...values };
-      if (honeypot) payload.website_url = honeypot;
+      if (honeypotValue) payload.website_url = honeypotValue;
       const res = await fetch(`${API_BASE}/public/forms/${publicId}/submit`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -110,7 +87,7 @@ export function PublicLeadFormPage() {
     );
   }
 
-  if (formQuery.isError || !formQuery.data) {
+  if (formQuery.isError || !formQuery.data || !presentation) {
     return (
       <main className="mx-auto flex min-h-full max-w-lg flex-col justify-center gap-2 p-6">
         <h1 className="text-xl font-semibold">Form unavailable</h1>
@@ -136,11 +113,13 @@ export function PublicLeadFormPage() {
     <main className="mx-auto flex min-h-full max-w-lg flex-col justify-center gap-6 p-6">
       <div>
         <h1 className="text-xl font-semibold tracking-tight">
-          {formQuery.data.name}
+          {presentation.name}
         </h1>
-        <p className="text-muted-foreground mt-1 text-sm">
-          Fill out the form below and we&apos;ll be in touch.
-        </p>
+        {presentation.description ? (
+          <p className="text-muted-foreground mt-1 text-sm">
+            {presentation.description}
+          </p>
+        ) : null}
       </div>
 
       {error ? <p className="text-destructive text-sm">{error}</p> : null}
@@ -152,38 +131,40 @@ export function PublicLeadFormPage() {
           submitMutation.mutate();
         }}
       >
-        {fields.map((field) => (
-          <div key={field.name} className="space-y-2">
-            <Label htmlFor={`pf-${field.name}`}>
-              {field.label ?? field.name}
+        {presentation.fields.map((field) => (
+          <div key={field.key} className="space-y-2">
+            <Label htmlFor={`pf-${field.key}`}>
+              {field.label}
               {field.required ? " *" : ""}
             </Label>
             <Input
-              id={`pf-${field.name}`}
-              type={field.type === "email" ? "email" : "text"}
+              id={`pf-${field.key}`}
+              type={inputTypeForField(field.type)}
               required={field.required}
-              value={values[field.name] ?? ""}
+              value={values[field.key] ?? ""}
               onChange={(e) =>
                 setValues((prev) => ({
                   ...prev,
-                  [field.name]: e.target.value,
+                  [field.key]: e.target.value,
                 }))
               }
             />
           </div>
         ))}
 
-        <div className="hidden" aria-hidden>
-          <Input
-            tabIndex={-1}
-            autoComplete="off"
-            value={honeypot}
-            onChange={(e) => setHoneypot(e.target.value)}
-          />
-        </div>
+        {presentation.honeypot ? (
+          <div className="hidden" aria-hidden>
+            <Input
+              tabIndex={-1}
+              autoComplete="off"
+              value={honeypotValue}
+              onChange={(e) => setHoneypotValue(e.target.value)}
+            />
+          </div>
+        ) : null}
 
         <Button type="submit" disabled={submitMutation.isPending}>
-          Submit
+          {presentation.submitLabel}
         </Button>
       </form>
     </main>

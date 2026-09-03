@@ -45,6 +45,16 @@ const navGroups = [
   },
 ];
 
+function isNavItemActive(pathname: string, href: string, allHrefs: string[]) {
+  const matches = allHrefs.filter(
+    (candidate) =>
+      pathname === candidate || pathname.startsWith(`${candidate}/`),
+  );
+  if (!matches.length) return false;
+  const best = matches.reduce((a, b) => (a.length >= b.length ? a : b));
+  return best === href;
+}
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -127,6 +137,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   const currentOrgId = authStorage.getOrganizationId();
+  const allNavHrefs = navGroups.flatMap((group) =>
+    group.items.map((item) => item.href),
+  );
 
   return (
     <div className="bg-background flex min-h-full flex-1">
@@ -172,10 +185,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </div>
               <div className="flex flex-col gap-0.5">
                 {group.items.map((item) => {
-                  const active =
-                    pathname === item.href ||
-                    (item.href !== "/dashboard" &&
-                      pathname.startsWith(item.href));
+                  const active = isNavItemActive(
+                    pathname,
+                    item.href,
+                    allNavHrefs,
+                  );
                   return (
                     <Link
                       key={item.href}

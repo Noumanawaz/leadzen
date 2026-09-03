@@ -38,6 +38,7 @@ import {
   PlacesImportDto,
   PlacesSearchDto,
   UpdateImportMappingDto,
+  UpdateLeadFormDto,
 } from './dto/lead-discovery.dto';
 import { ImportQueueService } from './import-queue.service';
 import { CreditCostService } from './credit-cost.service';
@@ -323,6 +324,16 @@ export class LeadDiscoveryController {
     @Body() dto: CreateLeadFormDto,
   ) {
     return this.forms.create(organizationId, dto);
+  }
+
+  @RequirePermissions('lead_sources:manage')
+  @Patch('v1/lead-forms/:id')
+  updateForm(
+    @OrgId() organizationId: string,
+    @Param('id') id: string,
+    @Body() dto: UpdateLeadFormDto,
+  ) {
+    return this.forms.update(organizationId, id, dto);
   }
 
   @RequirePermissions('lead_sources:manage')

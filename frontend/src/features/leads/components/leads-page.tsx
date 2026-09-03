@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { MessageCircle, Pencil, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -122,25 +123,6 @@ export function LeadsPage() {
     onError: (err) => setMessage((err as Error).message),
   });
 
-  const moveMutation = useMutation({
-    mutationFn: (params: {
-      leadId: string;
-      pipelineId: string;
-      pipelineStageId: string;
-    }) =>
-      apiClient(`/v1/leads/${params.leadId}`, {
-        method: "PATCH",
-        body: JSON.stringify({
-          pipelineId: params.pipelineId,
-          pipelineStageId: params.pipelineStageId,
-        }),
-      }),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["leads"] });
-      setMessage("Lead stage updated.");
-    },
-  });
-
   const deleteMutation = useMutation({
     mutationFn: (leadId: string) =>
       apiClient(`/v1/leads/${leadId}`, { method: "DELETE" }),
@@ -258,22 +240,12 @@ export function LeadsPage() {
 
       <LeadsTable
         rows={leadsQuery.data ?? []}
-        stages={stages}
-        pipelineId={defaultPipeline?.id}
         loading={leadsQuery.isLoading}
         deletingId={
           deleteMutation.isPending
             ? (deleteMutation.variables ?? null)
             : null
         }
-        onMoveStage={(leadId, pipelineStageId) => {
-          if (!defaultPipeline?.id) return;
-          moveMutation.mutate({
-            leadId,
-            pipelineId: defaultPipeline.id,
-            pipelineStageId,
-          });
-        }}
         onDelete={handleDelete}
         onContact={openContact}
         onEdit={openEdit}
@@ -297,21 +269,15 @@ export function LeadsPage() {
 
 function LeadsTable({
   rows,
-  stages,
-  pipelineId,
   loading,
   deletingId,
-  onMoveStage,
   onDelete,
   onContact,
   onEdit,
 }: {
   rows: LeadRow[];
-  stages: Stage[];
-  pipelineId?: string;
   loading?: boolean;
   deletingId?: string | null;
-  onMoveStage: (leadId: string, pipelineStageId: string) => void;
   onDelete: (lead: LeadRow) => void;
   onContact: (lead: LeadRow) => void;
   onEdit: (lead: LeadRow) => void;
@@ -330,7 +296,6 @@ function LeadsTable({
             <th className="py-2 pr-4 font-medium">Phone</th>
             <th className="py-2 pr-4 font-medium">Company</th>
             <th className="py-2 pr-4 font-medium">Stage</th>
-            <th className="py-2 pr-4 font-medium">Move</th>
             <th className="py-2 font-medium">Actions</th>
           </tr>
         </thead>
@@ -351,50 +316,40 @@ function LeadsTable({
               <td className="py-2 pr-4">
                 {row.pipelineStage?.name ?? "Unassigned"}
               </td>
-              <td className="py-2 pr-4">
-                <select
-                  className="border-input bg-background h-8 max-w-[10rem] rounded-md border px-2 text-xs"
-                  value={row.pipelineStageId ?? ""}
-                  disabled={!pipelineId || !stages.length}
-                  onChange={(e) => {
-                    if (e.target.value) onMoveStage(row.id, e.target.value);
-                  }}
-                >
-                  <option value="">Set stage…</option>
-                  {stages.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}
-                    </option>
-                  ))}
-                </select>
-              </td>
               <td className="py-2">
-                <div className="flex flex-wrap gap-2">
+                <div className="flex items-center gap-1">
                   <Button
                     type="button"
-                    variant="secondary"
-                    size="sm"
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={`Edit ${leadLabel(row)}`}
+                    title="Edit"
                     onClick={() => onEdit(row)}
                   >
-                    Edit
+                    <Pencil className="size-4" />
                   </Button>
                   <Button
                     type="button"
-                    variant="outline"
-                    size="sm"
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={`Contact ${leadLabel(row)}`}
+                    title="Contact"
                     disabled={!row.email && !row.phone}
                     onClick={() => onContact(row)}
                   >
-                    Contact
+                    <MessageCircle className="size-4" />
                   </Button>
                   <Button
                     type="button"
-                    variant="destructive"
-                    size="sm"
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={`Delete ${leadLabel(row)}`}
+                    title="Delete"
+                    className="text-destructive hover:text-destructive"
                     disabled={deletingId === row.id}
                     onClick={() => onDelete(row)}
                   >
-                    {deletingId === row.id ? "Deleting…" : "Delete"}
+                    <Trash2 className="size-4" />
                   </Button>
                 </div>
               </td>
@@ -402,7 +357,7 @@ function LeadsTable({
           ))}
           {!rows.length ? (
             <tr>
-              <td colSpan={7} className="text-muted-foreground py-6">
+              <td colSpan={6} className="text-muted-foreground py-6">
                 No leads yet — add one above. It will appear on the Pipeline board.
               </td>
             </tr>

@@ -91,7 +91,7 @@ export function LeadEditSheet({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="sm:max-w-md">
+      <SheetContent className="w-full sm:w-[50vw] sm:max-w-none">
         <SheetHeader>
           <SheetTitle>Edit lead</SheetTitle>
           <SheetDescription>
